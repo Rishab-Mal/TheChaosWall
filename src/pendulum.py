@@ -2,9 +2,9 @@ import math
 import pandas as pd
 
 class DoublePendulum:
-    def __init__(self, theta1, theta2, m1=1.0, m2=1.0, l1=1.0, l2=1.0, g=9.81):
-        self.init_theta1 = theta1
-        self.init_theta2 = theta2
+    def __init__(self, theta1_deg, theta2_deg, m1=1.0, m2=1.0, l1=1.0, l2=1.0, g=9.81):
+        self.init_theta1_deg = theta1_deg
+        self.init_theta2_deg = theta2_deg
         self.m1 = m1
         self.m2 = m2
         self.l1 = l1
@@ -17,8 +17,9 @@ class DoublePendulum:
         T = 1
         cur_t = 0
         
-        theta1 = self.init_theta1
-        theta2 = self.init_theta2
+        # Convert to radians for calculation
+        theta1 = math.radians(self.init_theta1_deg)
+        theta2 = math.radians(self.init_theta2_deg)
         theta1_dot = 0.0
         theta2_dot = 0.0
         
@@ -47,15 +48,15 @@ class DoublePendulum:
                 )
             ) / (self.l2 / self.l1 * D)
             
-            # Store current state
+            # Store current state (all in degrees)
             data.append({
-                'init_theta1': self.init_theta1,
-                'init_theta2': self.init_theta2,
+                'init_theta1': self.init_theta1_deg,
+                'init_theta2': self.init_theta2_deg,
                 't': cur_t,
-                'theta1': theta1,
-                'theta2': theta2,
-                'theta1_dot': theta1_dot,
-                'theta2_dot': theta2_dot
+                'theta1': math.degrees(theta1),
+                'theta2': math.degrees(theta2),
+                'theta1_dot': math.degrees(theta1_dot),
+                'theta2_dot': math.degrees(theta2_dot)
             })
             
             # TIME INTEGRATION
@@ -65,11 +66,4 @@ class DoublePendulum:
             theta2 += theta2_dot * dt
             cur_t += dt
         
-
         return pd.DataFrame(data)
-        # THEN WE CAN PUT DATA FRAME CONTENTS IN PARQUET FOR EVERY PENDULUM AS WE ITERATE THRU EVERY PENDULUM
-
-# Usage:
-# pendulum = DoublePendulum(theta1=1.5, theta2=0.5)
-# df = pendulum.generateTimeData()
-# df.to_parquet('pendulum_data.parquet')
