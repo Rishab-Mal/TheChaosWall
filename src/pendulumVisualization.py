@@ -1,67 +1,93 @@
+# //src/pendulumVisualization.py
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-# --- 1. SETUP PARAMETERS ---
-m1, m2 = 1.0, 1.0
-l1, l2 = 1.0, 1.0
-g = 9.81
-dt = 0.01  # Time step
+from pendulum import DoublePendulum
 
-# Initial state: [theta1, theta2, theta1_dot, theta2_dot]
-state = np.array([np.pi/2, np.pi/2, 0.0, 0.0])
 
-def get_derivs(state):
-    """Calculates the angular accelerations (the math from your code)."""
-    t1, t2, w1, w2 = state
-    cos_delta = np.cos(t1 - t2)
-    sin_delta = np.sin(t1 - t2)
-    
-    den1 = (m1 + m2) * l1 - m2 * l1 * cos_delta**2
-    t1_ddot = (m2 * l1 * w1**2 * sin_delta * cos_delta
-               + m2 * g * np.sin(t2) * cos_delta
-               + m2 * l2 * w2**2 * sin_delta
-               - (m1 + m2) * g * np.sin(t1)) / den1
+# -----------------------------------------
+# 1. Simulation Parameters
+# -----------------------------------------
 
-    den2 = (l2 / l1) * den1
-    t2_ddot = (-m2 * l2 * w2**2 * sin_delta * cos_delta
-               + (m1 + m2) * (g * np.sin(t1) * cos_delta
-               - l1 * w1**2 * sin_delta
-               - g * np.sin(t2))) / den2
-    
-    return np.array([w1, w2, t1_ddot, t2_ddot])
+l1 = 1.0
+l2 = 1.0
+dt = 0.01
+T = 5.0   # longer for better visual effect
 
-# --- 2. THE ANIMATION ENGINE ---
-fig, ax = plt.subplots(figsize=(5, 5))
+# Initial angles (radians)
+theta1_init = np.pi / 2
+theta2_init = np.pi / 2 + 0.01  # small offset to show chaos
+
+pendulum = DoublePendulum(
+    theta1=theta1_init,
+    theta2=theta2_init,
+    l1=l1,
+    l2=l2,
+    dt=dt,
+    T=T
+)
+
+df = pendulum.generateTimeData()
+
+theta1_vals = df["theta1"].values
+theta2_vals = df["theta2"].values
+
+# -----------------------------------------
+# 2. Setup Figure
+# -----------------------------------------
+
+fig, ax = plt.subplots(figsize=(6, 6))
 ax.set_xlim(-2.2, 2.2)
 ax.set_ylim(-2.2, 2.2)
-ax.set_aspect('equal')
-ax.grid()
+ax.set_aspect("equal")
+ax.grid(True)
+ax.set_title("Double Pendulum (RK45 Integration)")
 
-line, = ax.plot([], [], 'o-', lw=2, color='#1f77b4', markersize=8)
-trace, = ax.plot([], [], '-', lw=1, color='gray', alpha=0.5)
+line, = ax.plot([], [], "o-", lw=2)
+trace, = ax.plot([], [], "-", lw=1, alpha=0.5)
+
 history_x, history_y = [], []
 
+
+# -----------------------------------------
+# 3. Animation Update
+# -----------------------------------------
+
 def update(frame):
-    global state
-    # Update state using the derivatives
-    state += get_derivs(state) * dt
-    
-    # Convert angles to (x, y) coordinates
-    x1 = l1 * np.sin(state[0])
-    y1 = -l1 * np.cos(state[0])
-    x2 = x1 + l2 * np.sin(state[1])
-    y2 = y1 - l2 * np.cos(state[1])
-    
-    # Update the pendulum rods
+
+    theta1 = theta1_vals[frame]
+    theta2 = theta2_vals[frame]
+
+    # Convert to Cartesian
+    x1 = l1 * np.sin(theta1)
+    y1 = -l1 * np.cos(theta1)
+
+    x2 = x1 + l2 * np.sin(theta2)
+    y2 = y1 - l2 * np.cos(theta2)
+
+    # Update rods
     line.set_data([0, x1, x2], [0, y1, y2])
-    
-    # Update the "ghost" trail
+
+    # Update trail
     history_x.append(x2)
     history_y.append(y2)
-    trace.set_data(history_x[-50:], history_y[-50:]) # Keep last 50 points
-    
+    trace.set_data(history_x[-150:], history_y[-150:])
+
     return line, trace
 
-ani = FuncAnimation(fig, update, frames=200, interval=20, blit=True)
+
+# -----------------------------------------
+# 4. Run Animation
+# -----------------------------------------
+
+ani = FuncAnimation(
+    fig,
+    update,
+    frames=len(theta1_vals),
+    interval=dt * 1000,
+    blit=True
+)
+
 plt.show()
