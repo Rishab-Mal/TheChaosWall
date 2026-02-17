@@ -3,3 +3,4 @@ numpy>=1.25.0
 pandas>=2.1.0
 polars
 scipy
+matplotlib
