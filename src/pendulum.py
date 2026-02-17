@@ -22,7 +22,7 @@ class DoublePendulum:
         """
         All angles must be in radians.
         """
-
+        
         self.theta1 = theta1
         self.theta2 = theta2
         self.m1 = m1
