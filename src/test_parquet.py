@@ -4,16 +4,20 @@ import pyarrow.parquet as pq
 import pyarrow as pa
 
 def main():
-    parquet_file = "test_pendulum.parquet"
+    parquet_file = "test_pendulum2.parquet"
     writer = None
     count = 0
 
     # SMALL TEST GRID
     for init_theta1 in np.arange(0, 10, 5):      # 0, 5 degrees
         for init_theta2 in np.arange(0, 20, 10): # 0, 10 degrees
-            
+
             pendulum = DoublePendulum(init_theta1, init_theta2)
             df = pendulum.generateTimeData()
+
+            df["run_id"] = count
+            df["init_theta1"] = init_theta1
+            df["init_theta2"] = init_theta2
 
             table = pa.Table.from_pandas(df)
 
