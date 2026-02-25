@@ -20,9 +20,12 @@ def load_sims_from_parquet(file_path: str):
 
     return sim_dict
 
-def sample_subsequence(file_path: str, sim_dict: dict, n_samples: int=20):
+def sample_subsequence(file_path: str, sim_dict: dict, n_samples=20):
     df = pl.scan_parquet(file_path)
     sim_id = random.choice(list(sim_dict.keys()))
+    if isinstance(n_samples, str) and n_samples.endswith('%'):
+        pct = float(n_samples[:-1]) / 100
+        n_samples = int((sim_dict[sim_id][1]-sim_dict[sim_id][0]) * pct)
 
     t_0, t_end = sim_dict[sim_id]
     max_t_start = t_end - n_samples
@@ -46,5 +49,5 @@ def sample_batch(file_path: str, sim_dict: dict, batch_size: int=32, n_samples: 
         batch.append(subsequence)
     return batch
 
-# TODO: split subsequence collection into train/test sets
-# TODO: Create a pipeline class (storing filpath) to create/normalize batches on demand for training
+# 
+# TODO: split sims into 80/20 train/test setsTODO: Create a pipeline class (storing filpath) to create/normalize batches on demand for training
