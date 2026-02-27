@@ -1,141 +1,103 @@
+# Vanilla RNN for regression on dummy data
+
+# Model Architecture:
+# Input (batch, seq_len, 4)
+#         ↓
+# Simple RNN (1 layer, 64 hidden units, tanh)
+#         ↓
+# Take hidden state at final timestep
+#         ↓
+# Fully Connected Linear Layer (64 → 4)
+#         ↓
+# Output (batch, 4)
+
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset  # WRONG: DataLoader/TensorDataset belong in training code, not a model file
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+import matplotlib.pyplot as plt
+from pathlib import Path
 
-# WRONG: build_rnn here duplicates stacked_rnn_layers() in layers.py — two functions doing the same job.
-#        Pick one place and delete the other. layers.py version is more complete (supports plain 'RNN' type).
-# WRONG: args are passed positionally to torch.nn.LSTM/GRU — if PyTorch ever reorders them this silently breaks.
-#        Use keyword arguments: nn.LSTM(input_size=..., hidden_size=..., ...)
-# WRONG: plain 'RNN' type is not handled here, only LSTM/GRU — layers.py handles all three
-def build_rnn(rnn_type, input_size, hidden_size, num_layers=1, bias=True, batch_first=False, dropout=0, bidirectional=False):
-    if rnn_type == 'LSTM':
-        return torch.nn.LSTM(input_size, hidden_size, num_layers, bias, batch_first, dropout, bidirectional)
-    elif rnn_type == 'GRU':
-        return torch.nn.GRU(input_size, hidden_size, num_layers, bias, batch_first, dropout, bidirectional)
-    else:
-        raise ValueError("Unsupported RNN type: {}".format(rnn_type))
+# Device setup
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-class BaseRNN(torch.nn.Module):
-    def __init__(
-        self,
-        rnn_type,
-        input_size,
-        hidden_size,
-        num_layers=1,
-        bias=True,
-        batch_first=False,
-        dropout=0,
-        bidirectional=False
-        # NOT DONE: output_size is missing as a parameter — the __main__ block below passes it
-        #           but __init__ doesn't accept it, so instantiation will crash with TypeError.
-        #           Add output_size here and create a self.fc = nn.Linear(hidden_size, output_size)
-    ):
-        super(BaseRNN, self).__init__()
+# Data
+SEQ_LEN    = 20
+N_FEATURES = 4
+N_SAMPLES  = 1000
 
-        self.rnn = build_rnn(rnn_type, input_size, hidden_size, num_layers, bias, batch_first, dropout, bidirectional)
-        # NOT DONE: no output projection layer — the RNN outputs shape (batch, seq, hidden_size)
-        #           but we want to predict shape (batch, output_size). Need:
-        #           self.fc = nn.Linear(hidden_size, output_size)
+X = torch.randn(N_SAMPLES, SEQ_LEN, N_FEATURES)
+y = torch.randn(N_SAMPLES, N_FEATURES)
 
-    def forward(self, x, h=None):
-        # WRONG: self.rnn(x, h) returns a tuple (output, hidden_state) — not a plain tensor.
-        #        The training loop does criterion(pred, Y_batch) where pred = model(X_batch),
-        #        so pred is a tuple and MSELoss will crash. Need to unpack: output, _ = self.rnn(x, h)
-        #        Then apply self.fc to the last timestep: return self.fc(output[:, -1, :])
-        return self.rnn(x, h)
+# Split data
+train_split = int(0.8 * len(X))
+X_train, X_test = X[:train_split], X[train_split:]
+y_train, y_test = y[:train_split], y[train_split:]
 
-    def init_hidden(self, batch_size):
-        # GOOD: correctly handles LSTM (needs h_0, c_0 tuple) vs GRU/RNN (just h_0)
-        num_directions = 2 if self.rnn.bidirectional else 1
-        h_0 = torch.zeros(self.rnn.num_layers * num_directions, batch_size, self.rnn.hidden_size)
-        # WRONG: h_0 and c_0 are always on CPU — if model is on GPU this will cause a device mismatch.
-        #        Should be: torch.zeros(..., device=next(self.parameters()).device)
-        if isinstance(self.rnn, torch.nn.LSTM):
-            c_0 = torch.zeros(self.rnn.num_layers * num_directions, batch_size, self.rnn.hidden_size)
-            return (h_0, c_0)
-        else:
-            return h_0
+train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
+test_loader  = DataLoader(TensorDataset(X_test,  y_test),  batch_size=32)
 
-    def stacked_rnn_layers(self, x):
-        # WRONG: this method name is misleading — it doesn't stack anything, it just runs a forward pass.
-        #        It also duplicates what forward() does. Either remove this method or rename it.
+# Model
+class RNNModel(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.rnn = nn.RNN(input_size=input_size, hidden_size=hidden_size, batch_first=True)
+        self.fc  = nn.Linear(in_features=hidden_size, out_features=output_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         output, _ = self.rnn(x)
-        return output
+        return self.fc(output[:, -1, :])
 
-# ── data (replace with your real data) ─────────────────────────────
-# WRONG: make_dummy_data, train(), and the __main__ block all belong in training/train.py, not the model file.
-#        Model files should only define model architecture. Having training code here makes it impossible
-#        to import BaseRNN without also importing DataLoader etc.
-def make_dummy_data(n_samples=1000, seq_len=20, n_features=4):
-    """
-    Replace this with your actual physics data.
-    X : (n_samples, seq_len, n_features)  — past 20 states
-    Y : (n_samples, n_features)           — next state to predict
-    """
-    X = torch.randn(n_samples, seq_len, n_features)
-    Y = torch.randn(n_samples, n_features)
-    return X, Y
+torch.manual_seed(67)
+model = RNNModel(input_size=N_FEATURES, hidden_size=64, output_size=N_FEATURES).to(device)
 
+# Loss and optimizer
+loss_fn   = nn.MSELoss()
+optimizer = torch.optim.Adam(params=model.parameters(), lr=0.001)
 
-# ── training + evaluation ───────────────────────────────────────────
-# WRONG: this train() function should be in training/train.py — move it there
-def train(model, train_loader, val_loader, epochs=20, lr=1e-3):
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+# Training loop
+torch.manual_seed(67)
+epochs = 100
 
-    for epoch in range(epochs):
+for epoch in range(epochs):
+    model.train()
+    train_loss = 0
+    for X_batch, y_batch in train_loader:
+        y_pred = model(X_batch.to(device))
+        loss   = loss_fn(y_pred, y_batch.to(device))
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item()
 
-        # ── train ──────────────────────────────────────────────────
-        model.train()
-        train_loss = 0
-        for X_batch, Y_batch in train_loader:
-            optimizer.zero_grad()
-            pred = model(X_batch)           # forward
-            # WRONG: pred is a tuple (output, hidden) from BaseRNN.forward() — MSELoss will crash here
-            loss = criterion(pred, Y_batch) # compare to true next state
-            loss.backward()                 # backprop
-            optimizer.step()                # update weights
-            train_loss += loss.item()
+    # Eval
+    model.eval()
+    test_loss = 0
+    with torch.inference_mode():
+        for X_batch, y_batch in test_loader:
+            test_pred  = model(X_batch.to(device))
+            test_loss += loss_fn(test_pred, y_batch.to(device)).item()
 
-        # ── validate ───────────────────────────────────────────────
-        # GOOD: model.eval() + torch.no_grad() is the correct validation pattern
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():               # no gradients needed
-            for X_batch, Y_batch in val_loader:
-                pred = model(X_batch)
-                # WRONG: same issue — pred is a tuple
-                val_loss += criterion(pred, Y_batch).item()
+    print(f"Epoch: {epoch+1:3d} | Loss: {train_loss/len(train_loader):.4f} | Test loss: {test_loss/len(test_loader):.4f}")
 
-        # GOOD: averaging loss over batches by dividing by len(loader) is correct
-        print(f"Epoch {epoch+1:3d} | "
-              f"Train Loss: {train_loss/len(train_loader):.4f} | "
-              f"Val Loss:   {val_loss/len(val_loader):.4f}")
-        # NOT DONE: no learning rate scheduler step here
-        # NOT DONE: no checkpoint saving here
-        # NOT DONE: no early stopping
+# Save model
+MODEL_PATH      = Path("models")
+MODEL_PATH.mkdir(parents=True, exist_ok=True)
+MODEL_SAVE_PATH = MODEL_PATH / "rnn.pth"
+torch.save(obj=model.state_dict(), f=MODEL_SAVE_PATH)
+print(f"Model saved to: {MODEL_SAVE_PATH}")
 
+# Load model
+loaded_model = RNNModel(input_size=N_FEATURES, hidden_size=64, output_size=N_FEATURES)
+loaded_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+loaded_model.to(device)
 
-# ── run ─────────────────────────────────────────────────────────────
-# WRONG: this __main__ block should be in training/train.py, not the model file
-if __name__ == "__main__":
-    SEQ_LEN    = 20
-    N_FEATURES = 4
-    BATCH_SIZE = 32
+# Plot predictions (first feature across test samples)
+model.eval()
+with torch.inference_mode():
+    y_preds = model(X_test.to(device)).cpu()
 
-    # load your data here
-    X, Y = make_dummy_data(n_samples=1000, seq_len=SEQ_LEN, n_features=N_FEATURES)
-
-    # split 80/20 train/test
-    split     = int(0.8 * len(X))
-    train_ds  = TensorDataset(X[:split], Y[:split])
-    val_ds    = TensorDataset(X[split:], Y[split:])
-
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE)
-
-    # WRONG: output_size=N_FEATURES is passed here but BaseRNN.__init__ doesn't accept output_size — TypeError crash
-    # WRONG: rnn_type is also not passed — will crash on missing required positional argument
-    model = BaseRNN(input_size=N_FEATURES, hidden_size=64, output_size=N_FEATURES)
-
-    train(model, train_loader, val_loader, epochs=20)
+plt.figure(figsize=(10, 7))
+plt.plot(y_test[:, 0],  c="g", label="True")
+plt.plot(y_preds[:, 0], c="r", label="Predicted")
+plt.legend()
+plt.show()
