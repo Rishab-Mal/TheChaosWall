@@ -6,10 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 
-# -----------------------------------------
 # 1. Load Data
-# -----------------------------------------
-
 data_path = "test_pendulum.parquet"
 df = pd.read_parquet(data_path)
 
