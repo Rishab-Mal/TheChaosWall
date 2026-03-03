@@ -31,7 +31,7 @@ def sample_subsequence(file_path: str, sim_dict: dict, n_samples=20):
     max_t_start = t_end - n_samples
     if max_t_start <= t_0:
         raise ValueError(f"Simulation {sim_id} is too short for the requested number of samples.")
-    start = random.randint(t_0, max_t_start)
+    start = random.uniform(t_0, max_t_start)  # t_0/t_end are floats — randint only takes ints
     end = start + n_samples
 
     query = (
@@ -49,5 +49,5 @@ def sample_batch(file_path: str, sim_dict: dict, batch_size: int=32, n_samples: 
         batch.append(subsequence)
     return batch
 
-# 
-# TODO: split sims into 80/20 train/test setsTODO: Create a pipeline class (storing filpath) to create/normalize batches on demand for training
+# TODO: split sims into 80/20 train/test sets
+# TODO: Create a pipeline class (storing filepath) to create/normalize batches on demand for training

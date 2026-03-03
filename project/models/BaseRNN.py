@@ -88,7 +88,7 @@ print(f"Model saved to: {MODEL_SAVE_PATH}")
 
 # Load model
 loaded_model = RNNModel(input_size=N_FEATURES, hidden_size=64, output_size=N_FEATURES)
-loaded_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+loaded_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH, weights_only=True))
 loaded_model.to(device)
 
 # Plot predictions (first feature across test samples)
