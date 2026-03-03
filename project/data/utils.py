@@ -9,36 +9,36 @@ def load_sims_from_parquet(file_path: str):
         .group_by('sim_id')
         .agg([
             pl.col('t').max().alias('t_end'),
-            pl.col('t').min().alias('t_0')
+            pl.col('t').min().alias('t_0'),
+            pl.col('t').count().alias('count')
         ])
         .collect()
     )
     sim_dict = {
-        row['sim_id']: (row['t_0'], row['t_end'])
+        row['sim_id']: (row['t_0'], row['t_end'], row['count'])
         for row in sim_idx.iter_rows(named=True)
     }
 
     return sim_dict
 
 def sample_subsequence(file_path: str, sim_dict: dict, n_samples=20):
-    df = pl.scan_parquet(file_path)
     sim_id = random.choice(list(sim_dict.keys()))
+    t_0, t_end, count = sim_dict[sim_id]
+    
     if isinstance(n_samples, str) and n_samples.endswith('%'):
         pct = float(n_samples[:-1]) / 100
-        n_samples = int((sim_dict[sim_id][1]-sim_dict[sim_id][0]) * pct)
+        n_samples = max(1, int(count * pct))
 
-    t_0, t_end = sim_dict[sim_id]
-    max_t_start = t_end - n_samples
-    if max_t_start <= t_0:
+    if count < n_samples:
         raise ValueError(f"Simulation {sim_id} is too short for the requested number of samples.")
-    start = random.uniform(t_0, max_t_start)  # t_0/t_end are floats — randint only takes ints
-    end = start + n_samples
+        
+    start_idx = random.randint(0, count - n_samples)
 
     query = (
         pl.scan_parquet(file_path)
         .filter(pl.col('sim_id') == sim_id)
-        .filter(pl.col('t').is_between(start, end))
         .sort('t')
+        .slice(start_idx, n_samples)
     )
     return query.collect()
 
