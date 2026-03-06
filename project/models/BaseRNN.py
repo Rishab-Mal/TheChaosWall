@@ -101,3 +101,21 @@ plt.plot(y_test[:, 0],  c="g", label="True")
 plt.plot(y_preds[:, 0], c="r", label="Predicted")
 plt.legend()
 plt.show()
+
+# Save predictions to Parquet
+import polars as pl
+
+y_test_np  = y_test.numpy()
+y_preds_np = y_preds.numpy()
+
+feature_names = ["theta1", "theta2", "theta1_dot", "theta2_dot"]
+
+data = {"sample_idx": list(range(len(y_test_np)))}
+for i, name in enumerate(feature_names):
+    data[f"true_{name}"]      = y_test_np[:, i].tolist()
+    data[f"predicted_{name}"] = y_preds_np[:, i].tolist()
+
+df = pl.DataFrame(data)
+OUTPUT_PATH = Path("rnn_predictions.parquet")
+df.write_parquet(OUTPUT_PATH)
+print(f"Predictions saved to: {OUTPUT_PATH}")
