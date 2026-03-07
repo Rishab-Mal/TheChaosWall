@@ -10,7 +10,7 @@ MODEL_FILEPATH = "models/rnn.pth"
 
 # Leave blank to use default parquet in repo root.
 # Example: PARQUET_FILEPATH = r"C:\path\to\test_pendulum2.parquet"
-PARQUET_FILEPATH = ""
+PARQUET_FILEPATH = "Synthetic.parquet"
 
 
 class RNNModel(nn.Module):
@@ -97,12 +97,62 @@ def load_parquet_windows(
     return X, y
 
 
+def _regression_metrics(y_pred: torch.Tensor, y_true: torch.Tensor) -> dict:
+    err = y_pred - y_true
+    mse = torch.mean(err ** 2).item()
+    rmse = mse ** 0.5
+    mae = torch.mean(torch.abs(err)).item()
+    ss_res = torch.sum(err ** 2)
+    y_mean = torch.mean(y_true, dim=0, keepdim=True)
+    ss_tot = torch.sum((y_true - y_mean) ** 2)
+    r2 = (1.0 - (ss_res / (ss_tot + 1e-12))).item()
+    return {"mse": mse, "rmse": rmse, "mae": mae, "r2": r2}
+
+
+def _print_evaluation(y_pred: torch.Tensor, y_true: torch.Tensor, X: torch.Tensor) -> None:
+    feature_names = ["theta1", "theta2", "theta1_dot", "theta2_dot"]
+
+    print("Evaluation Summary")
+    print(f"- Num windows: {X.shape[0]}")
+    print(f"- Sequence shape: {tuple(X.shape)}")
+    print(f"- Target shape: {tuple(y_true.shape)}")
+
+    overall = _regression_metrics(y_pred, y_true)
+    print("Overall Metrics")
+    print(
+        f"- MSE: {overall['mse']:.6f} | RMSE: {overall['rmse']:.6f} | "
+        f"MAE: {overall['mae']:.6f} | R2: {overall['r2']:.6f}"
+    )
+
+    print("Per-Feature Metrics")
+    for i, name in enumerate(feature_names):
+        m = _regression_metrics(y_pred[:, i:i+1], y_true[:, i:i+1])
+        print(
+            f"- {name:10s} MSE: {m['mse']:.6f} | RMSE: {m['rmse']:.6f} | "
+            f"MAE: {m['mae']:.6f} | R2: {m['r2']:.6f}"
+        )
+
+    # Simple baseline: predict next state as the last state in the input window.
+    baseline_pred = X[:, -1, :]
+    baseline = _regression_metrics(baseline_pred, y_true)
+    print("Baseline (predict next = last input timestep)")
+    print(
+        f"- MSE: {baseline['mse']:.6f} | RMSE: {baseline['rmse']:.6f} | "
+        f"MAE: {baseline['mae']:.6f} | R2: {baseline['r2']:.6f}"
+    )
+
+    print("Sample Predictions (first 5)")
+    max_rows = min(5, y_true.shape[0])
+    for i in range(max_rows):
+        print(
+            f"- idx {i:3d} | true={y_true[i].tolist()} | pred={y_pred[i].tolist()}"
+        )
+
+
 if __name__ == "__main__":
     model, device = load_trained_model()
     X, y_true = load_parquet_windows()
     with torch.inference_mode():
         prediction = model(X.to(device)).cpu()
-    mse = torch.mean((prediction - y_true) ** 2).item()
     print(f"Loaded model on {device}.")
-    print(f"Parquet windows: {tuple(X.shape)} -> predictions: {tuple(prediction.shape)}")
-    print(f"MSE on sampled parquet windows: {mse:.6f}")
+    _print_evaluation(prediction, y_true, X)
