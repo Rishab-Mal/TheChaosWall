@@ -13,28 +13,69 @@
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset, Subset
 import matplotlib.pyplot as plt
 from pathlib import Path
+import sys
 
 # Device setup
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+# Reproducibility
+torch.manual_seed(67)
+
 # Data
 SEQ_LEN    = 20
 N_FEATURES = 4
-N_SAMPLES  = 1000
+N_SAMPLES  = 1000  # sampled training windows per epoch-length dataset
 
-X = torch.randn(N_SAMPLES, SEQ_LEN, N_FEATURES)
-y = torch.randn(N_SAMPLES, N_FEATURES)
+# Make project/data importable when running this script directly.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+from data.utils import load_sims_from_parquet, sample_subsequence
 
-# Split data
-train_split = int(0.8 * len(X))
-X_train, X_test = X[:train_split], X[train_split:]
-y_train, y_test = y[:train_split], y[train_split:]
 
-train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
-test_loader  = DataLoader(TensorDataset(X_test,  y_test),  batch_size=32)
+class ParquetSequenceDataset(Dataset):
+    """Samples sequence->next-step pairs from pendulum parquet simulations."""
+    def __init__(self, file_path: Path, sim_dict: dict, seq_len: int = 20, n_samples: int = 1000):
+        self.file_path = str(file_path)
+        self.sim_dict = sim_dict
+        self.seq_len = seq_len
+        self.n_samples = n_samples
+        self.feature_cols = ["theta1", "theta2", "theta1_dot", "theta2_dot"]
+
+    def __len__(self):
+        return self.n_samples
+
+    def __getitem__(self, idx):
+        # Pull seq_len + 1 timesteps so we can predict the next state after the sequence.
+        df = sample_subsequence(self.file_path, self.sim_dict, n_samples=self.seq_len + 1)
+        features = df.select(self.feature_cols).to_numpy().astype("float32")
+        X = torch.tensor(features[:-1], dtype=torch.float32)
+        y = torch.tensor(features[-1], dtype=torch.float32)
+        return X, y
+
+
+preferred_path = Path(__file__).resolve().parents[2] / "test_pundulum.parquet"
+fallback_path = Path(__file__).resolve().parents[2] / "test_pendulum2.parquet"
+if preferred_path.exists():
+    parquet_path = preferred_path
+elif fallback_path.exists():
+    parquet_path = fallback_path
+else:
+    raise FileNotFoundError(
+        f"Could not find parquet dataset. Checked: {preferred_path} and {fallback_path}"
+    )
+
+sim_dict = load_sims_from_parquet(str(parquet_path))
+dataset = ParquetSequenceDataset(parquet_path, sim_dict, seq_len=SEQ_LEN, n_samples=N_SAMPLES)
+train_split = int(0.8 * len(dataset))
+train_dataset = Subset(dataset, range(train_split))
+test_dataset = Subset(dataset, range(train_split, len(dataset)))
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader  = DataLoader(test_dataset,  batch_size=32)
 
 # Model
 class RNNModel(nn.Module):
@@ -47,7 +88,6 @@ class RNNModel(nn.Module):
         output, _ = self.rnn(x)
         return self.fc(output[:, -1, :])
 
-torch.manual_seed(67)
 model = RNNModel(input_size=N_FEATURES, hidden_size=64, output_size=N_FEATURES).to(device)
 
 # Loss and optimizer
@@ -91,13 +131,4 @@ loaded_model = RNNModel(input_size=N_FEATURES, hidden_size=64, output_size=N_FEA
 loaded_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH, weights_only=True))
 loaded_model.to(device)
 
-# Plot predictions (first feature across test samples)
-model.eval()
-with torch.inference_mode():
-    y_preds = model(X_test.to(device)).cpu()
 
-plt.figure(figsize=(10, 7))
-plt.plot(y_test[:, 0],  c="g", label="True")
-plt.plot(y_preds[:, 0], c="r", label="Predicted")
-plt.legend()
-plt.show()
