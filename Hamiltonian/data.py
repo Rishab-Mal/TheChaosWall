@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, random_split
 from pathlib import Path
 
 try:
@@ -22,7 +22,8 @@ def build_dataloader(
     batch_size: int = 64,
     max_windows: int = 2048,
     shuffle: bool = True,
-) -> DataLoader:
+    val_split: float = 0.1,
+) -> tuple[DataLoader, DataLoader]:
     """
     Load pendulum parquet data and build (seq_in, target_derivs) pairs.
     seq_in:        [B, seq_len, 4]  – input window of states
@@ -79,7 +80,14 @@ def build_dataloader(
 
     X = torch.tensor(np.array(sequences), dtype=torch.float32)
     y = torch.tensor(np.array(targets), dtype=torch.float32)
-    return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=shuffle)
+    dataset = TensorDataset(X, y)
+    n_val = int(len(dataset) * val_split)
+    n_train = len(dataset) - n_val
+    train_ds, val_ds = random_split(dataset, [n_train, n_val])
+    return (
+        DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle),
+        DataLoader(val_ds, batch_size=batch_size, shuffle=False),
+    )
 
 
 def pendumlum_derivs(state):

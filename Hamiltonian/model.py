@@ -19,7 +19,6 @@ class HNN(nn.Module):
     def time_derivatives(self, x: torch.Tensor) -> torch.Tensor:
         x = x.detach().requires_grad_(True)
         H = self.forward(x)
-
         gradH = torch.autograd.grad(
             H.sum(),
             x,

@@ -8,5 +8,6 @@ SEQ_LEN = 20
 BATCH_SIZE = 64
 RNN_HIDDEN = 64
 RNN_PATH = "models/rnn.pth"
+HNN_PATH = "models/hnn_final.pth"
 PARQUET_PATH = "test_pendulum2.parquet"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
