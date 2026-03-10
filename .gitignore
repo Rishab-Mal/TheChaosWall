@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env
+.venv
+
+# IDEs and Tools
+.vscode/
+.idea/
+.claude/
+
+# Distributions and builds
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
