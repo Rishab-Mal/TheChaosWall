@@ -1,32 +1,3 @@
-##//src/data/read_parquet.py
-#import polars as pl 
-#from pathlib import Path
-#
-##import numpy as np
-##from scipy.integrate import odeint
-#
-#filepath = Path("/data.parquet") # <placeholder>
-#scan = pl.scan_parquet(filepath) # allows read of table segment
-#data_window = scan.filter(pl.col("t") < 1).collect() #<check time complexity>
-#
-#def batch_stream(filepath, t_start, t_end):
-#  
-#
-## for testing
-#sample_df = pl.DataFrame({ # dummy data for testing
-#    "t":[0.]*100,
-#    "theta1":[0.]*100,
-#    "theta2":[0.]*100,
-#    "l1":[1.]*100,
-#    "l2":[1.]*100,
-#    "m1":[1.]*100,
-#    "m2":[1.]*100,
-#    "dt":[1e-5]*100,
-#    "sim_id":["sim00001"]*100
-#})
-#
-# //src/data/read_parquet.py
-
 import polars as pl
 from pathlib import Path
 from typing import Iterator, Optional
