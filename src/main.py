@@ -1,69 +1,30 @@
-##//src/main.py
-#from pendulum import DoublePendulum
-#import pandas as pd
-#import numpy as np
-#import pyarrow.parquet as pq
-#import pyarrow as pa
-#
-#def main():
-#    parquet_file = 'pendulum_simulations.parquet'
-#    writer = None
-#    count = 0
-#    
-#    # NEW PARQUET DOC: columns = init_theta1, init_theta2, t, theta1, theta2, theta1_dot, theta2_dot
-#    
-#    for init_theta1 in np.arange(0, 180.01, 0.01):  # 0 to 180 degrees
-#        for init_theta2 in np.arange(0, 360.01, 0.01):  # 0 to 360 degrees
-#            pendulum = DoublePendulum(init_theta1, init_theta2)
-#            df = pendulum.generateTimeData()
-#            
-#            # Convert to pyarrow table
-#            table = pa.Table.from_pandas(df)
-#            
-#            # Initialize writer on first iteration
-#            if writer is None:
-#                writer = pq.ParquetWriter(parquet_file, table.schema)
-#            
-#            # Write this simulation's data
-#            writer.write_table(table)
-#            count += 1
-#            
-#            if count % 1000 == 0:
-#                print(f"Processed {count} simulations...")
-#    
-#    if writer:
-#        writer.close()
-#    
-#    print(f"Saved {count} simulations to {parquet_file}")
-#
-#if __name__ == "__main__":
-#    main()
-
-# //src/main.py
-
 import numpy as np
 from pathlib import Path
 
 from pendulum import DoublePendulum
 from data.write_parquet import SafeBufferedParquetWriter, get_pendulum_schema
 
+# Output goes to the project root so train_rnn.py can find it directly.
+_ROOT = Path(__file__).resolve().parents[1]
+
 
 def main():
 
     # -----------------------------
-    # CONFIG (LOCAL SAFE DEFAULTS)
+    # CONFIG
     # -----------------------------
-    parquet_file = "pendulum_simulations.parquet"
-    num_simulations = 20_000     # Safe for local machine
-    T = 1.0                      # total time
-    dt = 0.01                    # timestep
+    parquet_file = str(_ROOT / "training_data.parquet")
+    num_simulations = 500        # 500 sims × 180 windows = 90,000 training windows
+    T  = 10.0                    # 10 s per sim → 200 timesteps (substeps keep h=0.01 internally)
+    dt = 0.05
     l1 = 1.0
     l2 = 1.0
     m1 = 1.0
     m2 = 1.0
 
-    print(f"Generating {num_simulations} simulations...")
-    print(f"T={T}, dt={dt}")
+    print(f"Generating {num_simulations} simulations  (T={T}s, dt={dt}s)")
+    print(f"Output: {parquet_file}")
+    print(f"Expected windows for training: ~{num_simulations * (int(T/dt) - 20):,}\n")
 
     # -----------------------------
     # SETUP WRITER
@@ -120,8 +81,8 @@ def main():
                 dt
             ))
 
-        if (sim_idx + 1) % 1000 == 0:
-            print(f"Completed {sim_idx + 1} simulations")
+        if (sim_idx + 1) % 50 == 0:
+            print(f"  {sim_idx + 1}/{num_simulations} simulations done")
 
     # -----------------------------
     # CLOSE WRITER

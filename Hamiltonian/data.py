@@ -20,14 +20,17 @@ def build_dataloader(
     parquet_path: str,
     seq_len: int = 20,
     batch_size: int = 64,
-    max_windows: int = 2048,
+    max_windows: int = 50_000,
     shuffle: bool = True,
-) -> DataLoader:
+) -> tuple:
     """
     Load pendulum parquet data and build (seq_in, target_derivs) pairs.
     seq_in:        [B, seq_len, 4]  – input window of states
     target_derivs: [B, 4]           – time derivatives at the step after the window
                                       estimated via central differences
+
+    Returns (DataLoader, state_mean, state_std) where state_mean/std are [4]
+    tensors computed from all training states — used to normalise HNN inputs.
     """
     path = Path(parquet_path)
     if not path.exists():
@@ -79,12 +82,14 @@ def build_dataloader(
 
     X = torch.tensor(np.array(sequences), dtype=torch.float32)
     y = torch.tensor(np.array(targets), dtype=torch.float32)
-    return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=shuffle)
+
+    # Normalisation stats
+    X_flat = X.reshape(-1, X.shape[-1])          # [N*seq_len, 4]
+    state_mean = X_flat.mean(dim=0)              # [4]
+    state_std  = X_flat.std(dim=0).clamp(min=1e-6)
+
+    deriv_std = y.std(dim=0).clamp(min=1e-6)     # [4] — per-component deriv scale
+
+    return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=shuffle), state_mean, state_std, deriv_std
 
 
-def pendumlum_derivs(state):
-    """Simple pendulum (q, p) time derivatives. H = p²/2 - cos(q)"""
-    q, p = state
-    dqdt = p
-    dpdt = -np.sin(q)
-    return np.array([dqdt, dpdt])
