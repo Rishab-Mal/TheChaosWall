@@ -1,5 +1,6 @@
-import polars as pl
 import random
+import polars as pl
+
 
 def load_sims_from_parquet(file_path: str):
     df = pl.scan_parquet(file_path)
@@ -48,6 +49,3 @@ def sample_batch(file_path: str, sim_dict: dict, batch_size: int=32, n_samples: 
         subsequence = sample_subsequence(file_path, sim_dict, n_samples)
         batch.append(subsequence)
     return batch
-
-# TODO: split sims into 80/20 train/test sets
-# TODO: Create a pipeline class (storing filepath) to create/normalize batches on demand for training
