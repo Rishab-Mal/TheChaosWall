@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TheChaosWall</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #06060f;
+        --bg-card: #0d0d1a;
+        --bg-card2: #111124;
+        --border: #1e1e3a;
+        --text: #d4d8f0;
+        --text-dim: #6b7280;
+        --purple: #a78bfa;
+        --cyan: #22d3ee;
+        --orange: #fb923c;
+        --green: #4ade80;
+        --pink: #f472b6;
+        --radius: 12px;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Space Grotesk', sans-serif;
+        line-height: 1.6;
+        overflow-x: hidden;
+      }
+
+      /* ─── NAV ─── */
+      nav {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 2.5rem;
+        background: rgba(6, 6, 15, 0.8);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-logo {
+        font-weight: 700;
+        font-size: 1.15rem;
+        letter-spacing: -0.02em;
+      }
+      .nav-logo span { color: var(--purple); }
+      .nav-links { display: flex; gap: 2rem; list-style: none; }
+      .nav-links a {
+        color: var(--text-dim);
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: color 0.2s;
+      }
+      .nav-links a:hover { color: var(--text); }
+
+      /* ─── HERO ─── */
+      #hero {
+        position: relative;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      #pendulum-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+      .hero-content {
+        position: relative;
+        z-index: 2;
+        text-align: center;
+        padding: 0 1rem;
+      }
+      .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(167, 139, 250, 0.12);
+        border: 1px solid rgba(167, 139, 250, 0.3);
+        color: var(--purple);
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        padding: 0.3rem 0.9rem;
+        margin-bottom: 1.5rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .badge-dot {
+        width: 6px; height: 6px;
+        background: var(--purple);
+        border-radius: 50%;
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.8); }
+      }
+      h1 {
+        font-size: clamp(3rem, 8vw, 6.5rem);
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.04em;
+        margin-bottom: 1.2rem;
+      }
+      h1 .accent {
+        background: linear-gradient(135deg, var(--purple) 0%, var(--cyan) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero-sub {
+        font-size: clamp(1rem, 2.5vw, 1.25rem);
+        color: var(--text-dim);
+        max-width: 540px;
+        margin: 0 auto 2rem;
+        font-weight: 400;
+      }
+      .hero-hint {
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        margin-top: 1.5rem;
+        font-family: 'JetBrains Mono', monospace;
+        opacity: 0.6;
+      }
+
+      /* ─── SECTIONS ─── */
+      section {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 6rem 2rem;
+      }
+      .section-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--purple);
+        margin-bottom: 0.75rem;
+      }
+      .section-title {
+        font-size: clamp(1.75rem, 4vw, 2.75rem);
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        margin-bottom: 1.25rem;
+        line-height: 1.15;
+      }
+      .section-body {
+        color: var(--text-dim);
+        font-size: 1.05rem;
+        max-width: 680px;
+        line-height: 1.75;
+      }
+
+      /* ─── ABOUT ─── */
+      #about { border-top: 1px solid var(--border); }
+      .about-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4rem;
+        margin-top: 3rem;
+        align-items: start;
+      }
+      @media (max-width: 700px) { .about-grid { grid-template-columns: 1fr; gap: 2rem; } }
+      .about-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding: 1.25rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+      }
+      .stat-num {
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--cyan);
+      }
+      .stat-label { font-size: 0.85rem; color: var(--text-dim); }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+
+      /* ─── MODELS ─── */
+      #models { border-top: 1px solid var(--border); }
+      .models-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-top: 3rem;
+      }
+      @media (max-width: 700px) { .models-grid { grid-template-columns: 1fr; } }
+      .model-card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        padding: 2rem;
+        transition: border-color 0.25s, transform 0.25s;
+      }
+      .model-card:hover {
+        transform: translateY(-3px);
+        border-color: #2e2e5a;
+      }
+      .model-card.lstm { border-top: 3px solid var(--purple); }
+      .model-card.hnn  { border-top: 3px solid var(--cyan); }
+      .model-icon {
+        width: 44px; height: 44px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        margin-bottom: 1rem;
+      }
+      .model-icon.lstm { background: rgba(167, 139, 250, 0.15); }
+      .model-icon.hnn  { background: rgba(34, 211, 238, 0.15); }
+      .model-name {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+      .model-desc {
+        color: var(--text-dim);
+        font-size: 0.92rem;
+        line-height: 1.65;
+        margin-bottom: 1.5rem;
+      }
+      .model-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .tag {
+        font-size: 0.73rem;
+        font-family: 'JetBrains Mono', monospace;
+        padding: 0.25rem 0.65rem;
+        border-radius: 9999px;
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        background: var(--bg-card2);
+      }
+
+      /* ─── PIPELINE ─── */
+      #pipeline { border-top: 1px solid var(--border); }
+      .pipeline-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.25rem;
+        margin-top: 3rem;
+      }
+      .pipeline-step {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        position: relative;
+      }
+      .step-num {
+        font-size: 0.7rem;
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--orange);
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        letter-spacing: 0.08em;
+      }
+      .step-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 0.4rem;
+      }
+      .step-desc {
+        font-size: 0.85rem;
+        color: var(--text-dim);
+        line-height: 1.6;
+      }
+
+      /* ─── TECH ─── */
+      #tech { border-top: 1px solid var(--border); padding-top: 4rem; padding-bottom: 4rem; }
+      .tech-list { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+      .tech-chip {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        font-size: 0.88rem;
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--text-dim);
+      }
+
+      /* ─── FOOTER ─── */
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 2.5rem 2rem;
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 0.85rem;
+      }
+      footer a { color: var(--purple); text-decoration: none; }
+      footer a:hover { text-decoration: underline; }
+    </style>
+  </head>
+
+  <body>
+    <!-- NAV -->
+    <nav>
+      <div class="nav-logo">The<span>Chaos</span>Wall</div>
+      <ul class="nav-links">
+        <li><a href="#about">About</a></li>
+        <li><a href="#models">Models</a></li>
+        <li><a href="#pipeline">Pipeline</a></li>
+        <li><a href="#tech">Stack</a></li>
+      </ul>
+    </nav>
+
+    <!-- HERO -->
+    <section id="hero">
+      <canvas id="pendulum-canvas"></canvas>
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="badge-dot"></span>
+          Live Simulation
+        </div>
+        <h1>The<span class="accent">Chaos</span>Wall</h1>
+        <p class="hero-sub">
+          Comparing data-driven LSTM and physics-informed Hamiltonian Neural
+          Networks on a chaotic double pendulum
+        </p>
+        <p class="hero-hint">click canvas to reset with new initial conditions</p>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section id="about">
+      <p class="section-label">Background</p>
+      <h2 class="section-title">Chaos, captured</h2>
+      <div class="about-grid">
+        <div>
+          <p class="section-body">
+            The double pendulum is deceptively simple — two rods, two masses,
+            gravity — yet it is one of the most studied examples of deterministic
+            chaos. Two trajectories starting an infinitesimal distance apart
+            diverge exponentially, making long-horizon prediction a fundamental
+            challenge for any model.
+          </p>
+          <br />
+          <p class="section-body">
+            TheChaosWall pits a pure data-driven approach (LSTM) against a
+            physics-informed approach (Hamiltonian Neural Network) to see how
+            structural inductive biases about energy conservation change
+            prediction accuracy and rollout stability.
+          </p>
+        </div>
+        <div class="stats-grid">
+          <div class="about-stat">
+            <span class="stat-num">500</span>
+            <span class="stat-label">Simulations generated</span>
+          </div>
+          <div class="about-stat">
+            <span class="stat-num">~90K</span>
+            <span class="stat-label">Training windows</span>
+          </div>
+          <div class="about-stat">
+            <span class="stat-num">10 s</span>
+            <span class="stat-label">Trajectory length each</span>
+          </div>
+          <div class="about-stat">
+            <span class="stat-num">4D</span>
+            <span class="stat-label">State: θ₁ θ₂ ω₁ ω₂</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODELS -->
+    <section id="models">
+      <p class="section-label">Architecture</p>
+      <h2 class="section-title">Two approaches, one problem</h2>
+      <p class="section-body">
+        Both models predict the next state of the double pendulum, but they
+        encode very different beliefs about how the world works.
+      </p>
+      <div class="models-grid">
+        <!-- LSTM card -->
+        <div class="model-card lstm">
+          <div class="model-icon lstm">⚡</div>
+          <div class="model-name">LSTM</div>
+          <p class="model-desc">
+            A sequence model that ingests a sliding window of past states and
+            predicts the next state directly. No physics knowledge is baked in;
+            the network learns patterns purely from data. It is fast to train but
+            accumulates error in extended rollouts.
+          </p>
+          <div class="model-tags">
+            <span class="tag">input_size=4</span>
+            <span class="tag">hidden=64</span>
+            <span class="tag">output=4</span>
+            <span class="tag">window=20</span>
+            <span class="tag">data-driven</span>
+          </div>
+        </div>
+
+        <!-- HNN card -->
+        <div class="model-card hnn">
+          <div class="model-icon hnn">∮</div>
+          <div class="model-name">Hamiltonian Neural Net</div>
+          <p class="model-desc">
+            Instead of predicting states directly, the HNN learns a scalar
+            energy function H(q, p). Time derivatives are then computed via
+            automatic differentiation of Hamilton's equations —
+            <em>dq/dt = ∂H/∂p</em>, <em>dp/dt = −∂H/∂q</em> — enforcing
+            energy conservation by construction.
+          </p>
+          <div class="model-tags">
+            <span class="tag">learns H(q,p)</span>
+            <span class="tag">autograd</span>
+            <span class="tag">frozen LSTM encoder</span>
+            <span class="tag">physics-informed</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PIPELINE -->
+    <section id="pipeline">
+      <p class="section-label">Pipeline</p>
+      <h2 class="section-title">From simulation to comparison</h2>
+      <div class="pipeline-steps">
+        <div class="pipeline-step">
+          <div class="step-num">STEP 01</div>
+          <div class="step-title">Generate Data</div>
+          <p class="step-desc">
+            500 double pendulum simulations with random initial conditions,
+            integrated with a symplectic implicit midpoint solver and stored as
+            Parquet.
+          </p>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-num">STEP 02</div>
+          <div class="step-title">Train LSTM</div>
+          <p class="step-desc">
+            A sliding window LSTM is trained to map sequences of past states to
+            the next state using MSE loss over the Parquet dataset.
+          </p>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-num">STEP 03</div>
+          <div class="step-title">Train HNN</div>
+          <p class="step-desc">
+            With the LSTM frozen as a state encoder, the HNN head is trained to
+            learn the Hamiltonian energy surface and reproduce derivatives.
+          </p>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-num">STEP 04</div>
+          <div class="step-title">Compare</div>
+          <p class="step-desc">
+            Both models roll out predictions for unseen trajectories. Results are
+            plotted in a 2×2 grid — ground truth vs LSTM vs HNN — to evaluate
+            long-horizon accuracy.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TECH STACK -->
+    <section id="tech">
+      <p class="section-label">Stack</p>
+      <h2 class="section-title">Built with</h2>
+      <div class="tech-list">
+        <span class="tech-chip">🔥 PyTorch</span>
+        <span class="tech-chip">🐍 Python</span>
+        <span class="tech-chip">🐻‍❄️ Polars</span>
+        <span class="tech-chip">📐 NumPy</span>
+        <span class="tech-chip">🔬 SciPy</span>
+        <span class="tech-chip">📊 Matplotlib</span>
+        <span class="tech-chip">🗜 Parquet + ZSTD</span>
+        <span class="tech-chip">🌐 TypeScript + Vite</span>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+      <p>
+        TheChaosWall &mdash; a physics-informed ML experiment &nbsp;·&nbsp;
+        <a href="https://github.com/Rishab-Mal/TheChaosWall" target="_blank">
+          GitHub
+        </a>
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

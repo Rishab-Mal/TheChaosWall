@@ -1,24 +1,38 @@
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *$py.class
+.Python
+*.egg-info/
 
 # Virtual environments
 venv/
 env/
 ENV/
 .env
-.venv
+.venv/
 
-# IDEs and Tools
+# Model checkpoints & data
+*.pth
+*.parquet
+comparisons/
+
+# IDEs and tools
 .vscode/
 .idea/
 .claude/
 
-# Distributions and builds
-dist/
-build/
-*.egg-info/
-
 # Jupyter
 .ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
