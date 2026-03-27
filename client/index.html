@@ -309,6 +309,50 @@
         color: var(--text-dim);
       }
 
+      /* ─── DEMO ─── */
+      #demo { border-top: 1px solid var(--border); }
+      .demo-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1.5rem;
+        margin-bottom: 2rem;
+        font-size: 0.82rem;
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--text-dim);
+      }
+      .status-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        transition: background 0.3s;
+      }
+      .status-dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+      .status-dot.offline { background: var(--text-dim); }
+      .comparison-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 1.25rem;
+      }
+      @media (max-width: 700px) { .comparison-grid { grid-template-columns: 1fr; } }
+      .comp-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+      .comp-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      .comp-canvas {
+        width: 100%;
+        aspect-ratio: 1;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        display: block;
+      }
+
       /* ─── FOOTER ─── */
       footer {
         border-top: 1px solid var(--border);
@@ -330,6 +374,7 @@
         <li><a href="#about">About</a></li>
         <li><a href="#models">Models</a></li>
         <li><a href="#pipeline">Pipeline</a></li>
+        <li><a href="#demo">Demo</a></li>
         <li><a href="#tech">Stack</a></li>
       </ul>
     </nav>
@@ -480,6 +525,34 @@
             plotted in a 2×2 grid — ground truth vs LSTM vs HNN — to evaluate
             long-horizon accuracy.
           </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIVE DEMO -->
+    <section id="demo">
+      <p class="section-label">Live Demo</p>
+      <h2 class="section-title">Models in motion</h2>
+      <p class="section-body">
+        Real trajectories streamed from the trained models. Ground truth (symplectic integrator)
+        versus LSTM rollout versus HNN rollout — all from the same initial conditions.
+      </p>
+      <div class="demo-status">
+        <span class="status-dot offline" id="ws-dot"></span>
+        <span id="ws-status-text">Backend offline — run: uvicorn project.data.stream_app:app</span>
+      </div>
+      <div class="comparison-grid">
+        <div class="comp-panel">
+          <div class="comp-label" style="color: var(--green)">Ground Truth</div>
+          <canvas id="canvas-actual" class="comp-canvas"></canvas>
+        </div>
+        <div class="comp-panel">
+          <div class="comp-label" style="color: var(--purple)">LSTM</div>
+          <canvas id="canvas-lstm" class="comp-canvas"></canvas>
+        </div>
+        <div class="comp-panel">
+          <div class="comp-label" style="color: var(--cyan)">HNN</div>
+          <canvas id="canvas-hnn" class="comp-canvas"></canvas>
         </div>
       </div>
     </section>

@@ -5,3 +5,5 @@ polars
 scipy
 matplotlib
 torch
+fastapi
+uvicorn[standard]
