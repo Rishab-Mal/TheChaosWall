@@ -1,0 +1,38 @@
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+.Python
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env
+.venv/
+
+# Model checkpoints & data
+*.pth
+*.parquet
+comparisons/
+
+# IDEs and tools
+.vscode/
+.idea/
+.claude/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
