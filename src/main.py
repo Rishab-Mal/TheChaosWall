@@ -1,4 +1,5 @@
 import numpy as np
+import constants
 from pathlib import Path
 
 from pendulum import DoublePendulum
@@ -13,7 +14,7 @@ def main():
     # -----------------------------
     # CONFIG
     # -----------------------------
-    parquet_file = str(_ROOT / "training_data.parquet")
+    parquet_file = constants.DB_Path
     num_simulations = 500        # 500 sims × 180 windows = 90,000 training windows
     T  = 10.0                    # 10 s per sim → 200 timesteps (substeps keep h=0.01 internally)
     dt = 0.05
