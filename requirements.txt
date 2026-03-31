@@ -7,4 +7,3 @@ matplotlib
 torch
 fastapi
 uvicorn[standard]
-constants
