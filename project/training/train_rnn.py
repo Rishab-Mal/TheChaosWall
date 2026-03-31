@@ -49,27 +49,39 @@ FEATURE_COLS = ["theta1", "theta2", "theta1_dot", "theta2_dot"]
 
 # Training hyperparameters
 SEQ_LEN    = 20     # number of timesteps fed as input
+GAP        = 2      # predict this many steps ahead (gap prediction)
 HIDDEN     = 64     # LSTM hidden size (must match RNNModel default)
 BATCH_SIZE = 64
 EPOCHS     = 20
 LR         = 1e-3
-VAL_SPLIT  = 0.1    # fraction of windows held out for validation
+TEST_SPLIT = 0.2    # fraction of simulations held out for testing
+JITTER     = 0.001  # input jitter as fraction of std (0.1%)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 
-def build_windows(parquet_path: str, seq_len: int) -> tuple[torch.Tensor, torch.Tensor]:
+def build_windows(parquet_path: str, seq_len: int, gap: int, test_split: float = 0.2) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
     """
     Slide a window of seq_len over every simulation.
     Input  X[i]: states at timesteps  t .. t+seq_len-1  →  shape (seq_len, 4)
-    Target y[i]: state  at timestep   t+seq_len          →  shape (4,)
+    Target y[i]: state  at timestep   t+seq_len+gap-1   →  shape (4,)
+    
+    Returns: X_train, y_train, X_test, y_test, norm_stats
     """
     if not Path(parquet_path).exists():
         raise FileNotFoundError(f"Data not found: {parquet_path}")
 
     df = pl.read_parquet(parquet_path).sort([SIM_ID_COL, TIME_COL])
     sim_ids = df[SIM_ID_COL].unique().to_list()
-
-    sequences, targets = [], []
+    
+    # Split simulations into train/test
+    np.random.shuffle(sim_ids)
+    n_test = max(1, int(test_split * len(sim_ids)))
+    test_ids = set(sim_ids[:n_test])
+    train_ids = set(sim_ids[n_test:])
+    
+    train_sequences, train_targets = [], []
+    test_sequences, test_targets = [], []
+    
     for sid in sim_ids:
         arr = (
             df.filter(pl.col(SIM_ID_COL) == sid)
@@ -77,19 +89,40 @@ def build_windows(parquet_path: str, seq_len: int) -> tuple[torch.Tensor, torch.
             .to_numpy()
             .astype("float32")
         )
-        if arr.shape[0] <= seq_len:
+        if arr.shape[0] <= seq_len + gap - 1:
             continue
-        for i in range(arr.shape[0] - seq_len):
+            
+        sequences = train_sequences if sid in train_ids else test_sequences
+        targets = train_targets if sid in train_ids else test_targets
+        
+        for i in range(arr.shape[0] - seq_len - gap + 1):
             sequences.append(arr[i : i + seq_len])
-            targets.append(arr[i + seq_len])
+            targets.append(arr[i + seq_len + gap - 1])
 
-    if not sequences:
-        raise ValueError("No windows built — check seq_len vs. simulation length.")
+    if not train_sequences or not test_sequences:
+        raise ValueError("No windows built — check seq_len vs. simulation length or test_split.")
 
-    print(f"Built {len(sequences)} windows from {len(sim_ids)} simulations.")
-    X = torch.tensor(np.array(sequences), dtype=torch.float32)
-    y = torch.tensor(np.array(targets),   dtype=torch.float32)
-    return X, y
+    print(f"Built {len(train_sequences)} train windows from {len(train_ids)} simulations.")
+    print(f"Built {len(test_sequences)} test windows from {len(test_ids)} simulations.")
+    
+    X_train = torch.tensor(np.array(train_sequences), dtype=torch.float32)
+    y_train = torch.tensor(np.array(train_targets),   dtype=torch.float32)
+    X_test  = torch.tensor(np.array(test_sequences),  dtype=torch.float32)
+    y_test  = torch.tensor(np.array(test_targets),    dtype=torch.float32)
+    
+    # Z-score normalization using training data statistics
+    train_all = torch.cat([X_train.view(-1, 4), y_train], dim=0)
+    mean = train_all.mean(dim=0)
+    std = train_all.std(dim=0)
+    
+    X_train = (X_train - mean) / std
+    y_train = (y_train - mean) / std
+    X_test = (X_test - mean) / std
+    y_test = (y_test - mean) / std
+    
+    norm_stats = {'mean': mean.numpy(), 'std': std.numpy()}
+    
+    return X_train, y_train, X_test, y_test, norm_stats
 
 
 # ── Training ───────────────────────────────────────────────────────────────────
@@ -104,29 +137,37 @@ def _get_device() -> str:
         return "cpu"
 
 
-def train(X: torch.Tensor, y: torch.Tensor) -> None:
+def train(X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor, y_test: torch.Tensor, norm_stats: dict, gap: int, jitter: float) -> None:
     device = _get_device()
 
-    # Shuffle and split
-    perm    = torch.randperm(len(X))
-    X, y    = X[perm], y[perm]
-    n_val   = max(1, int(VAL_SPLIT * len(X)))
-    X_tr, y_tr   = X[n_val:], y[n_val:]
-    X_val, y_val = X[:n_val], y[:n_val]
-
-    train_loader = DataLoader(TensorDataset(X_tr, y_tr),   batch_size=BATCH_SIZE, shuffle=True)
-    val_loader   = DataLoader(TensorDataset(X_val, y_val), batch_size=BATCH_SIZE)
+    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=BATCH_SIZE, shuffle=True)
+    test_loader  = DataLoader(TensorDataset(X_test, y_test),   batch_size=BATCH_SIZE)
 
     model     = RNNModel(input_size=4, hidden_size=HIDDEN, output_size=4).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     criterion = nn.MSELoss()
 
-    print(f"\nLSTM  |  hidden={HIDDEN}  seq_len={SEQ_LEN}  device={device}")
-    print(f"Train: {len(X_tr)} windows   Val: {len(X_val)} windows")
-    print(f"\n{'Epoch':>6}  {'Train Loss':>12}  {'Val Loss':>10}  {'Best':>5}")
-    print("-" * 42)
+    print(f"\nLSTM  |  hidden={HIDDEN}  seq_len={SEQ_LEN}  gap={gap}  jitter={jitter*100:.1f}%  device={device}")
+    print(f"Train: {len(X_train)} windows   Test: {len(X_test)} windows")
+    print(f"\n{'Epoch':>6}  {'Train Loss':>12}  {'Test Loss':>11}  {'Test RMSE':>9}  {'R² %':>6}")
+    print("-" * 50)
 
-    best_val  = float("inf")
+    # Save normalization stats for inference
+    stats_path = Path(CKPT_PATH).parent / "normalization_stats.npy"
+    np.save(stats_path, norm_stats)
+    print(f"Normalization stats saved → {stats_path}")
+
+    # Calculate baseline loss once (predicting last frame)
+    baseline_loss = 0.0
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            baseline_pred = xb[:, -1, :]  # last timestep of sequence
+            baseline_loss += criterion(baseline_pred, yb).item()
+    baseline_loss /= len(test_loader)
+    print(f"Baseline Loss (last frame): {baseline_loss:.6f}")
+
+    best_test_loss = float("inf")
     Path(CKPT_PATH).parent.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(1, EPOCHS + 1):
@@ -134,6 +175,10 @@ def train(X: torch.Tensor, y: torch.Tensor) -> None:
         train_loss = 0.0
         for xb, yb in train_loader:
             xb, yb = xb.to(device), yb.to(device)
+            # Add input jitter (noise)
+            if jitter > 0:
+                noise = torch.randn_like(xb) * xb.std() * jitter
+                xb = xb + noise
             optimizer.zero_grad()
             loss = criterion(model(xb), yb)
             loss.backward()
@@ -142,25 +187,53 @@ def train(X: torch.Tensor, y: torch.Tensor) -> None:
         train_loss /= len(train_loader)
 
         model.eval()
-        val_loss = 0.0
+        test_loss = 0.0
+        total_rmse = 0.0
+        total_residual_sum = 0.0
+        n_samples = 0
+        
+        # Calculate mean of targets for R²
+        target_mean = y_test.mean(dim=0, keepdim=True).to(device)
+        total_variance = 0.0
+        
         with torch.no_grad():
-            for xb, yb in val_loader:
-                val_loss += criterion(model(xb.to(device)), yb.to(device)).item()
-        val_loss /= len(val_loader)
+            for xb, yb in test_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                pred = model(xb)
+                test_loss += criterion(pred, yb).item()
+                
+                # RMSE
+                mse = torch.mean((pred - yb) ** 2).item()
+                rmse = np.sqrt(mse)
+                total_rmse += rmse * len(xb)
+                
+                # R² components
+                total_variance += torch.sum((yb - target_mean) ** 2).item()
+                total_residual_sum += torch.sum((yb - pred) ** 2).item()
+                n_samples += len(xb)
+        
+        test_loss /= len(test_loader)
+        avg_rmse = total_rmse / n_samples
+        
+        # R² = 1 - (residual sum of squares / total sum of squares)
+        r2_score = 1.0 - (total_residual_sum / total_variance) if total_variance > 0 else 0.0
+        r2_percentage = max(0, r2_score * 100)  # Convert to percentage, floor at 0
 
-        is_best = val_loss < best_val
+        is_best = test_loss < best_test_loss
         if is_best:
-            best_val = val_loss
+            best_test_loss = test_loss
             torch.save(model.state_dict(), CKPT_PATH)
 
-        print(f"{epoch:>6}  {train_loss:>12.6f}  {val_loss:>10.6f}  {'*' if is_best else ''}")
+        print(f"{epoch:>6}  {train_loss:>12.6f}  {test_loss:>11.6f}  {avg_rmse:>9.4f}  {r2_percentage:>7.1f}%")
 
-    print(f"\nDone. Best val loss: {best_val:.6f}")
+    print(f"\nDone. Best test loss: {best_test_loss:.6f}")
+    print(f"Baseline loss: {baseline_loss:.6f} (predicting last frame)")
+    print(f"Final R²: {r2_percentage:.1f}% (variance explained)")
     print(f"Checkpoint saved → {CKPT_PATH}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    X, y = build_windows(DATA_PATH, SEQ_LEN)
-    train(X, y)
+    X_train, y_train, X_test, y_test, norm_stats = build_windows(DATA_PATH, SEQ_LEN, GAP, TEST_SPLIT)
+    train(X_train, y_train, X_test, y_test, norm_stats, GAP, JITTER)
