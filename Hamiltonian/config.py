@@ -10,11 +10,11 @@ def _get_device() -> str:
 
 
 INPUT_DIM  = 4        # [theta1, theta2, theta1_dot, theta2_dot]
-HIDDEN_DIM = 128
+HIDDEN_DIM = 256
 LR         = 1e-3
-EPOCHS     = 200
+EPOCHS     = 500
 SEQ_LEN    = 20
-BATCH_SIZE = 64
+BATCH_SIZE = 256
 RNN_HIDDEN = 64
 RNN_PATH     = "models/rnn.pth"
 PARQUET_PATH = "training_data.parquet"

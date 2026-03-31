@@ -93,3 +93,70 @@ def build_dataloader(
     return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=shuffle), state_mean, state_std, deriv_std
 
 
+def build_direct_dataloader(
+    parquet_path: str,
+    batch_size: int = 256,
+    max_samples: int = 100_000,
+    shuffle: bool = True,
+) -> tuple:
+    """
+    Returns (DataLoader, state_mean, state_std, deriv_std) where each sample is a
+    single (state [4], derivative [4]) pair — no LSTM, no sequence window.
+
+    Every interior timestep of every simulation becomes one training sample.
+    Derivatives are estimated via np.gradient (central differences).
+    """
+    path = Path(parquet_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Parquet file not found: {path}")
+
+    feature_cols = ["theta1", "theta2", "theta1_dot", "theta2_dot"]
+
+    if HAS_POLARS:
+        df = pl.read_parquet(str(path), columns=["sim_id", "t", *feature_cols])
+        df = df.sort(["sim_id", "t"])
+        groups = list(df.group_by("sim_id", maintain_order=True))
+        def get_arrays(group):
+            sim_df = group[1]
+            return (sim_df.select(feature_cols).to_numpy().astype("float32"),
+                    sim_df["t"].to_numpy().astype("float64"))
+    elif HAS_PANDAS:
+        df = pd.read_parquet(str(path), columns=["sim_id", "t", *feature_cols])
+        df = df.sort_values(["sim_id", "t"])
+        groups = list(df.groupby("sim_id"))
+        def get_arrays(group):
+            sim_df = group[1]
+            return (sim_df[feature_cols].to_numpy().astype("float32"),
+                    sim_df["t"].to_numpy().astype("float64"))
+    else:
+        raise ImportError("Install polars or pandas")
+
+    all_states, all_derivs = [], []
+
+    for group in groups:
+        arr, times = get_arrays(group)
+        if arr.shape[0] < 3:
+            continue
+        d = np.gradient(arr, times, axis=0).astype("float32")
+        # Skip first/last step — np.gradient uses one-sided diffs there
+        all_states.append(arr[1:-1])
+        all_derivs.append(d[1:-1])
+
+    states = np.concatenate(all_states, axis=0)
+    derivs = np.concatenate(all_derivs, axis=0)
+
+    if len(states) > max_samples:
+        rng = np.random.default_rng(0)
+        idx = rng.choice(len(states), max_samples, replace=False)
+        states, derivs = states[idx], derivs[idx]
+
+    X = torch.tensor(states, dtype=torch.float32)
+    y = torch.tensor(derivs, dtype=torch.float32)
+
+    state_mean = X.mean(dim=0)
+    state_std  = X.std(dim=0).clamp(min=1e-6)
+    deriv_std  = y.std(dim=0).clamp(min=1e-6)
+
+    return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=shuffle), state_mean, state_std, deriv_std
+
+

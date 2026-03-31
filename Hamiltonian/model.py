@@ -10,6 +10,8 @@ class HNN(nn.Module):
             nn.Tanh(),
             nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
             nn.Linear(hidden_size, 1),
         )
 
