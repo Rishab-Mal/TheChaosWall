@@ -262,7 +262,7 @@ function initComparison() {
   const compHnn    = initCompCanvas('canvas-hnn',    '#22d3ee');
   if (!compActual || !compLstm || !compHnn) return;
 
-  const comps = [compActual, compLstm, compHnn];
+  const comps: CompCanvas[] = [compActual, compLstm, compHnn];
   comps.forEach(resizeCompCanvas);
   window.addEventListener('resize', () => comps.forEach(resizeCompCanvas));
 
@@ -274,9 +274,9 @@ function initComparison() {
     ws.onmessage = (ev) => {
       const data = JSON.parse(ev.data) as CompFrame & { error?: string };
       if (data.error) { setWsStatus(false, data.error); return; }
-      drawCompFrame(compActual, data.actual);
-      drawCompFrame(compLstm,   data.lstm);
-      drawCompFrame(compHnn,    data.hnn);
+      drawCompFrame(compActual!, data.actual);
+      drawCompFrame(compLstm!,   data.lstm);
+      drawCompFrame(compHnn!,    data.hnn);
     };
 
     ws.onclose  = () => {

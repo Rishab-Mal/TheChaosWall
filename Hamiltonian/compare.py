@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from Hamiltonian.model import HNN        # noqa: E402
 import Hamiltonian.config as config     # noqa: E402
 
-CKPT_PATH   = ROOT / "models" / "hnn_epoch_200.pth"
+CKPT_PATH   = ROOT / "models" / f"hnn_epoch_{config.EPOCHS}.pth"
 ACTUAL_PATH = ROOT / "comparisons" / "actual.parquet"
 OUTPUT_PATH = ROOT / "comparisons" / "hnn_predicted.parquet"
 
