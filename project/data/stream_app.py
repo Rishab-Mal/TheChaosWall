@@ -32,6 +32,8 @@ HNN_PATH       = root / "models" / f"hnn_epoch_{EPOCHS}.pth"
 COLS           = ["t", "theta1", "theta2", "theta1_dot", "theta2_dot"]
 DT             = 0.05
 N_STEPS        = 200
+G              = 9.81
+MAX_ENERGY_STEPS = 2400
 
 # ── Load models once at startup ────────────────────────────────────────────────
 
@@ -70,7 +72,7 @@ def _pendulum_derivs(state: np.ndarray) -> np.ndarray:
     """Standard double-pendulum equations (m1=m2=l1=l2=1)."""
     t1, t2, w1, w2 = state
     delta = t1 - t2
-    denom = 2 - np.cos(2 * delta)
+    denom = 3 - np.cos(2 * delta)
     dw1 = (
         -9.81 * (2 + 1) * np.sin(t1)
         - np.sin(t1 - 2 * t2) * 9.81
@@ -98,6 +100,92 @@ def _hnn_deriv(state: torch.Tensor) -> torch.Tensor:
     x_norm = (state.unsqueeze(0) - _hnn_mean) / _hnn_std
     d_norm = _hnn.time_derivatives(x_norm)
     return (d_norm * _hnn_std).squeeze(0).detach()
+
+
+def _calc_energy(state) -> float | None:
+    """Total mechanical energy  E = T + V  (m1=m2=l1=l2=1)."""
+    try:
+        t1, t2, w1, w2 = float(state[0]), float(state[1]), float(state[2]), float(state[3])
+        if not all(map(np.isfinite, [t1, t2, w1, w2])):
+            return None
+        T = w1**2 + 0.5 * w2**2 + w1 * w2 * np.cos(t1 - t2)
+        V = -2 * G * np.cos(t1) - G * np.cos(t2)
+        e = T + V
+        return float(e) if np.isfinite(e) else None
+    except Exception:
+        return None
+
+
+def _gt_energy_series(theta1: float, theta2: float,
+                      omega1: float, omega2: float, n: int) -> dict:
+    state = np.array([theta1, theta2, omega1, omega2], dtype=np.float64)
+    t_vals, e_vals = [], []
+    for i in range(n):
+        t_vals.append(round(i * DT, 3))
+        e_vals.append(_calc_energy(state))
+        state = _rk4_step(state, DT)
+    return {"t": t_vals, "energy": e_vals}
+
+
+def _hnn_energy_series(theta1: float, theta2: float,
+                       omega1: float, omega2: float, n: int) -> dict:
+    if _hnn is None:
+        return {"t": [], "energy": []}
+    s = torch.tensor([theta1, theta2, omega1, omega2], dtype=torch.float32)
+    t_vals, e_vals = [], []
+    for i in range(n):
+        t_vals.append(round(i * DT, 3))
+        e_vals.append(_calc_energy(s.numpy()))
+        k1 = _hnn_deriv(s)
+        k2 = _hnn_deriv(s + 0.5 * DT * k1)
+        k3 = _hnn_deriv(s + 0.5 * DT * k2)
+        k4 = _hnn_deriv(s + DT * k3)
+        s  = (s + (DT / 6) * (k1 + 2 * k2 + 2 * k3 + k4)).detach()
+    return {"t": t_vals, "energy": e_vals}
+
+
+def _lstm_energy_series(theta1: float, theta2: float,
+                        omega1: float, omega2: float, n: int) -> dict:
+    if _rnn is None:
+        return {"t": [], "energy": []}
+
+    # Build ground-truth warmup window
+    warmup = np.empty((SEQ_LEN, 4), dtype=np.float64)
+    s = np.array([theta1, theta2, omega1, omega2], dtype=np.float64)
+    for i in range(SEQ_LEN):
+        warmup[i] = s
+        s = _rk4_step(s, DT)
+
+    t_vals, e_vals = [], []
+    window = torch.tensor(warmup, dtype=torch.float32).unsqueeze(0)  # [1, SEQ_LEN, 4]
+    diverged = False
+
+    with torch.inference_mode():
+        for i in range(n):
+            t_vals.append(round(i * DT, 3))
+            if i < SEQ_LEN:
+                e_vals.append(_calc_energy(warmup[i]))
+                continue
+            if diverged:
+                e_vals.append(None)
+                continue
+            out = _rnn(window).squeeze(0).numpy()
+            # Angle unwrapping
+            prev = window[0, -1, :2].numpy()
+            for j in range(2):
+                d = out[j] - prev[j]
+                out[j] = prev[j] + (d + np.pi) % (2 * np.pi) - np.pi
+            if not np.all(np.isfinite(out)):
+                diverged = True
+                e_vals.append(None)
+            else:
+                e_vals.append(_calc_energy(out))
+                window = torch.cat(
+                    [window[:, 1:, :],
+                     torch.tensor(out[np.newaxis, np.newaxis], dtype=torch.float32)],
+                    dim=1,
+                )
+    return {"t": t_vals, "energy": e_vals}
 
 
 # ── Trajectory computation ─────────────────────────────────────────────────────
@@ -239,3 +327,55 @@ async def ws_simulate(ws: WebSocket):
                 await asyncio.sleep(DT)
     except (WebSocketDisconnect, Exception):
         pass
+
+@app.websocket("/ws/energy")
+async def ws_energy(ws: WebSocket):
+    """Long-horizon energy drift: streams one batch per model then closes."""
+    await ws.accept()
+
+    if _rnn is None or _hnn is None:
+        await ws.send_text(json.dumps({
+            "type": "error",
+            "msg": "Models not loaded — check models/ directory"
+        }))
+        await ws.close()
+        return
+
+    try:
+        raw    = await ws.receive_text()
+        p      = json.loads(raw)
+        theta1 = float(p["theta1"])
+        theta2 = float(p["theta2"])
+        omega1 = float(p.get("omega1", 0.0))
+        omega2 = float(p.get("omega2", 0.0))
+        n      = min(int(p.get("n_steps", 1200)), MAX_ENERGY_STEPS)
+    except Exception:
+        await ws.send_text(json.dumps({"type": "error", "msg": "Invalid params"}))
+        await ws.close()
+        return
+
+    loop = asyncio.get_event_loop()
+    try:
+        await ws.send_text(json.dumps({"type": "status", "msg": "Computing ground truth..."}))
+        gt = await loop.run_in_executor(
+            None, _gt_energy_series, theta1, theta2, omega1, omega2, n)
+        await ws.send_text(json.dumps({"type": "batch", "model": "actual", **gt}))
+
+        await ws.send_text(json.dumps({"type": "status", "msg": "Computing HNN..."}))
+        hnn_e = await loop.run_in_executor(
+            None, _hnn_energy_series, theta1, theta2, omega1, omega2, n)
+        await ws.send_text(json.dumps({"type": "batch", "model": "hnn", **hnn_e}))
+
+        await ws.send_text(json.dumps({"type": "status", "msg": "Computing LSTM..."}))
+        lstm_e = await loop.run_in_executor(
+            None, _lstm_energy_series, theta1, theta2, omega1, omega2, n)
+        await ws.send_text(json.dumps({"type": "batch", "model": "lstm", **lstm_e}))
+
+        await ws.send_text(json.dumps({"type": "done"}))
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass

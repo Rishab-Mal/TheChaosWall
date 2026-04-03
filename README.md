@@ -1,263 +1,273 @@
 # TheChaosWall
 
-A physics-informed machine learning project modelling a **double pendulum** — one of the simplest chaotic systems. Two neural architectures are trained and compared:
+A physics-informed machine learning project modelling a **double pendulum** — one of the simplest chaotic systems. Three models are compared in real-time via a web UI:
 
-- **LSTM** — predicts the next state from a window of past states (pure data-driven)
-- **HNN (Hamiltonian Neural Network)** — learns the conserved energy H(q, p) and derives dynamics via autograd, enforcing energy conservation by construction
-
----
-
-## Architecture Overview
-
-```
-src/pendulum.py              Symplectic physics engine (implicit midpoint)
-      │
-      ▼
-src/main.py                  Generate 500 simulations → training_data.parquet
-      │
-      ├──────────────────────────────────────────────────────┐
-      ▼                                                       ▼
-project/training/train_rnn.py                     Hamiltonian/main.py
-Train LSTM → models/rnn.pth                       Train HNN (uses frozen LSTM
-                                                  as state encoder)
-      │                                                       │
-      ▼                                                       ▼
-project/models/RNNModel.py                        Hamiltonian/compare.py
-Prompt for θ₁,θ₂ → run LSTM rollout              Roll out HNN from same
-→ comparisons/actual.parquet                      initial state → RK4
-→ comparisons/rnn_predicted.parquet               → comparisons/hnn_predicted.parquet
-      │                                                       │
-      └───────────────────────┬───────────────────────────────┘
-                              ▼
-                 project/training/visualize.py
-                 3-line plot: Actual vs LSTM vs HNN
-```
+- **Ground Truth** — symplectic implicit midpoint integrator (energy-conserving physics)
+- **LSTM** — autoregressive rollout from a 20-frame window (pure data-driven)
+- **HNN (Hamiltonian Neural Network)** — learns the conserved energy H(q, p) and derives dynamics via autograd, enforcing Hamilton's equations by construction
 
 ---
 
-## Directory Structure
+## Project Structure
 
 ```
 TheChaosWall/
 │
-├── src/                          Physics simulation & data generation
-│   ├── pendulum.py               Double pendulum ODE + symplectic implicit midpoint integrator
-│   ├── main.py                   Generate large training dataset → training_data.parquet
+├── src/                              Physics simulation & data generation
+│   ├── pendulum.py                   Double pendulum ODE + symplectic implicit midpoint integrator
+│   ├── main.py                       Generate training dataset → training_data.parquet
 │   └── data/
-│       ├── write_parquet.py      SafeBufferedParquetWriter (buffered, ZSTD compressed)
-│       └── read_parquet.py       Parquet reader utilities
+│       ├── write_parquet.py          Buffered ZSTD-compressed parquet writer
+│       └── read_parquet.py           Parquet reader utilities
 │
-├── project/                      LSTM pipeline
+├── project/                          LSTM pipeline + backend
+│   ├── __init__.py
 │   ├── models/
-│   │   ├── RNNModel.py           LSTM model + rollout + comparison + evaluation
-│   │   └── layers.py             RNN layer factory (LSTM / GRU / vanilla RNN)
+│   │   ├── RNNModel.py               LSTM model definition + rollout + comparison export
+│   │   └── layers.py                 RNN layer factory (LSTM / GRU / vanilla RNN)
 │   ├── data/
-│   │   └── utils.py              Parquet utilities, subsequence sampler
+│   │   ├── __init__.py
+│   │   ├── utils.py                  Parquet utilities, subsequence sampler
+│   │   └── stream_app.py             FastAPI WebSocket server (live demo + simulate endpoint)
 │   └── training/
-│       ├── train_rnn.py          Train LSTM on any parquet → models/rnn.pth
-│       └── visualize.py          Plot actual vs LSTM vs HNN (2×2 grid)
+│       ├── train_rnn.py              Train LSTM → models/rnn.pth
+│       └── visualize.py              Plot actual vs LSTM vs HNN (2×2 grid, static)
 │
-├── Hamiltonian/                  Physics-informed ML (HNN)
-│   ├── model.py                  HNN: learns scalar H(q,p), derives dynamics via autograd
-│   ├── data.py                   Build (sequence, target_derivatives) training pairs
-│   ├── train.py                  Train HNN using frozen LSTM as state encoder
-│   ├── compare.py                Roll out trained HNN with RK4 from a given initial state
-│   ├── main.py                   Entry point: python Hamiltonian/main.py
-│   └── config.py                 Hyperparameters (hidden size, lr, epochs, paths)
+├── Hamiltonian/                      Physics-informed ML (HNN)
+│   ├── model.py                      HNN: learns scalar H(q,p), derives dynamics via autograd
+│   ├── data.py                       Build (state, derivative) training pairs via np.gradient
+│   ├── train.py                      Train HNN directly on raw states (no LSTM encoder)
+│   ├── compare.py                    Roll out trained HNN with RK4 from a given initial state
+│   ├── main.py                       Entry point: python Hamiltonian/main.py
+│   └── config.py                     Hyperparameters (INPUT_DIM=4, HIDDEN_DIM=256, EPOCHS=500, ...)
 │
-├── models/                       Saved checkpoints
-│   ├── rnn.pth                   Trained LSTM (best val loss checkpoint)
-│   └── hnn_epoch_*.pth           HNN checkpoints saved every 50 epochs
-│                                 (each stores state_dict + state_mean + state_std + deriv_std)
+├── client/                           Vite + TypeScript frontend
+│   ├── index.html                    Main page: hero canvas + live demo comparison
+│   ├── simulate.html                 Interactive page: sliders → real-time 3-model comparison + graphs
+│   ├── src/
+│   │   ├── main.ts                   Hero canvas physics + WebSocket demo section
+│   │   └── simulate.ts               Simulate page: WebSocket client, pendulum rendering, charts
+│   ├── package.json
+│   └── tsconfig.json
 │
-├── comparisons/                  Auto-created when running comparisons
-│   ├── actual.parquet            Ground truth from pendulum.py symplectic integrator
-│   ├── rnn_predicted.parquet     LSTM autoregressive rollout
-│   └── hnn_predicted.parquet     HNN RK4 rollout
+├── models/                           Saved checkpoints (git-ignored)
+│   ├── rnn.pth                       Trained LSTM
+│   └── hnn_epoch_*.pth               HNN checkpoints (every 50 epochs)
 │
-└── training_data.parquet         500 simulations, T=10s, dt=0.05 (generated by src/main.py)
+├── comparisons/                      Auto-created during compare steps (git-ignored)
+│   ├── actual.parquet                Ground truth trajectory
+│   ├── rnn_predicted.parquet         LSTM autoregressive rollout
+│   └── hnn_predicted.parquet         HNN RK4 rollout
+│
+├── training_data.parquet             500 simulations (git-ignored, generated by src/main.py)
+├── requirements.txt                  Python dependencies
+└── constants.py                      Shared path constants
 ```
 
 ---
 
-## Setup
+## Python Dependencies
 
 ```bash
-pip install torch polars numpy matplotlib pandas
+pip install -r requirements.txt
 ```
 
-For Intel GPU acceleration during LSTM training (optional):
+**`requirements.txt`** installs:
 
-```bash
-pip install torch-directml
-```
-
-> **Note:** torch-directml forces torch 2.4.1 and does not support LSTM or `torch.autograd.grad`. The LSTM training will use DirectML but HNN training always runs on CPU regardless.
+| Package | Purpose |
+|---------|---------|
+| `torch` | Model training and autograd |
+| `numpy>=1.25.0` | Numerical operations, np.gradient |
+| `polars` | Fast parquet I/O (preferred) |
+| `pandas>=2.1.0` | Parquet fallback if polars unavailable |
+| `pyarrow>=12.0.0` | Parquet backend |
+| `scipy` | ODE solving in data generation |
+| `matplotlib` | Static visualisation (visualize.py) |
+| `fastapi` | WebSocket backend server |
+| `uvicorn[standard]` | ASGI server for FastAPI |
 
 ---
 
-## Step-by-Step Usage
+## Node Dependencies (frontend)
 
-### 1. Generate training data
+```bash
+cd client
+npm install
+```
+
+Installs Vite and TypeScript. No other runtime dependencies.
+
+---
+
+## Full Pipeline (run in order from project root)
+
+### Step 1 — Generate training data
 
 ```bash
 python src/main.py
 ```
 
-Generates `training_data.parquet` in the project root — 500 double pendulum simulations with random initial conditions. Each simulation is 10 seconds at dt=0.05 (200 timesteps), giving ~90,000 training windows.
-
-Edit `src/main.py` to change `num_simulations`, `T`, or `dt`.
+Generates `training_data.parquet` in the project root — 500 double pendulum simulations with random initial conditions. Each simulation is 10 seconds at dt=0.05, giving ~100,000 state-derivative training pairs.
 
 ---
 
-### 2. Train the LSTM
+### Step 2 — Train the LSTM
 
 ```bash
 python project/training/train_rnn.py
 ```
 
-Trains the LSTM on `training_data.parquet`. Prints train/val loss each epoch, saves the best checkpoint to `models/rnn.pth`.
+Trains an LSTM on `training_data.parquet`. Saves best checkpoint to `models/rnn.pth`.
 
-Default hyperparameters (edit in `train_rnn.py`):
+Key hyperparameters (edit in `train_rnn.py`):
 
-| Parameter | Value | Meaning |
-|-----------|-------|---------|
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
 | `SEQ_LEN` | 20 | Input window length (timesteps) |
 | `HIDDEN` | 64 | LSTM hidden units |
 | `EPOCHS` | 20 | Training epochs |
 | `LR` | 1e-3 | Learning rate |
-| `VAL_SPLIT` | 0.1 | Fraction held out for validation |
-
-Target val loss: **< 0.01** (excellent), **< 0.1** (good).
 
 ---
 
-### 3. Run the LSTM comparison
+### Step 3 — Export LSTM comparison data
 
 ```bash
 python project/models/RNNModel.py
 ```
 
-Prompts for initial conditions:
-
-```
-theta1 (rad) [1.0]:
-theta2 (rad) [0.5]:
-Duration (s)  [10.0]:
-Timestep (s)  [0.05]:
-```
-
-Then:
-1. Simulates the actual trajectory via `pendulum.py` → `comparisons/actual.parquet`
-2. Seeds the LSTM with the first 20 frames and rolls out autoregressively → `comparisons/rnn_predicted.parquet`
-3. Prints single-step evaluation metrics (MSE, RMSE, MAE, R², per-feature with circular error for angles)
-4. Launches `visualize.py` automatically
+Prompts for initial conditions, then:
+1. Simulates actual trajectory via `pendulum.py` → `comparisons/actual.parquet`
+2. Seeds LSTM with first 20 frames → autoregressive rollout → `comparisons/rnn_predicted.parquet`
+3. Prints per-feature evaluation metrics (MSE, RMSE, MAE, R²)
 
 ---
 
-### 4. Train the HNN
+### Step 4 — Train the HNN
 
 ```bash
 python Hamiltonian/main.py
 ```
 
-Requires `models/rnn.pth` to exist. The LSTM acts as a frozen encoder: it maps an input sequence to the current state, which the HNN uses to predict time derivatives via Hamilton's equations.
+Trains directly on raw (state, derivative) pairs from `training_data.parquet` — **no LSTM encoder involved**. The HNN learns `H(q, p)` and derives time derivatives via `torch.autograd.grad`, enforcing Hamilton's equations:
 
-Training prints loss + learning rate each epoch. Checkpoints are saved every 50 epochs to `models/hnn_epoch_*.pth`.
+```
+dθ/dt  =  ∂H/∂ω     (position evolves with momentum gradient)
+dω/dt  = -∂H/∂θ     (velocity evolves against position gradient)
+```
 
-Target loss (normalized): **< 0.2** (good), **< 0.1** (excellent).
+Checkpoints saved every 50 epochs to `models/hnn_epoch_*.pth` (each stores `state_dict`, `state_mean`, `state_std`, `deriv_std`).
 
-Key design decisions:
-- LSTM stays on CPU (DirectML doesn't support LSTM or `torch.autograd.grad`)
-- HNN inputs are normalised to zero-mean/unit-std before passing through tanh layers
-- Loss is computed per-component (each derivative divided by its own std) so angular accelerations don't dominate
+Hyperparameters (`Hamiltonian/config.py`):
+
+| Parameter | Value |
+|-----------|-------|
+| `INPUT_DIM` | 4 (`[θ₁, θ₂, ω₁, ω₂]`) |
+| `HIDDEN_DIM` | 256 |
+| `EPOCHS` | 500 |
+| `LR` | 1e-3 |
+| `BATCH_SIZE` | 256 |
 
 ---
 
-### 5. Run the HNN comparison
+### Step 5 — Export HNN comparison data
 
 ```bash
 python Hamiltonian/compare.py
 ```
 
-Loads `comparisons/actual.parquet` (already generated in step 3), integrates the HNN forward from the same initial state using RK4, and saves to `comparisons/hnn_predicted.parquet`.
+Loads `comparisons/actual.parquet`, integrates HNN forward from the same initial state using **RK4**, saves to `comparisons/hnn_predicted.parquet`.
+
+Requires `models/hnn_epoch_500.pth` to exist (generated by step 4).
 
 ---
 
-### 6. Visualise all three
+### Step 6 — Static visualisation (optional)
 
 ```bash
 python project/training/visualize.py
 ```
 
-Produces a 2×2 grid (θ₁, θ₂, θ̇₁, θ̇₂) with three lines:
+Plots a 2×2 grid (θ₁, θ₂, ω₁, ω₂) with three lines: Actual (green), LSTM (red dashed), HNN (blue dotted). Requires steps 3 and 5 to have been run.
 
-| Line | Colour | Description |
-|------|--------|-------------|
-| Actual | Green | Ground truth from symplectic integrator |
-| RNN | Red dashed | LSTM autoregressive rollout |
-| HNN | Blue dotted | HNN integrated with RK4 |
+---
 
-Angles are wrapped to **[-π, π]** for display.
+## Running the Web App
+
+You need two terminals running simultaneously.
+
+### Terminal 1 — Backend (from project root)
+
+```bash
+uvicorn project.data.stream_app:app --reload
+```
+
+Server starts at `http://localhost:8000`. WebSocket endpoints:
+- `/ws` — streams pre-computed parquets in a loop (used by Demo section on index.html)
+- `/ws/simulate` — accepts initial conditions, computes 200 frames live, streams GT + LSTM + HNN
+
+### Terminal 2 — Frontend
+
+```bash
+cd client
+npm run dev
+```
+
+Frontend served at `http://localhost:5173`.
+
+Open pages:
+- `http://localhost:5173/` — Hero canvas + live Demo comparison
+- `http://localhost:5173/simulate.html` — Interactive page with sliders
+
+---
+
+## Interactive Simulate Page
+
+At `http://localhost:5173/simulate.html`:
+
+1. Use sliders to set **θ₁** and **θ₂** (initial angles in radians)
+2. Click **Simulate** — the backend computes 200 frames (~10s of physics) and streams them
+3. Three pendulum animations play side-by-side: Ground Truth, LSTM, HNN
+4. After all frames arrive, four graphs render automatically:
+   - **θ₁(t)** — angle 1 over time
+   - **θ₂(t)** — angle 2 over time
+   - **Energy(t)** — total energy (should be flat for GT and HNN, drifts for LSTM)
+   - **Phase portrait** — θ₁ vs θ₂ trajectory
+5. Click **Reset** to clear and re-simulate with new initial conditions
 
 ---
 
 ## Key Concepts
 
-### Double Pendulum Physics
-
-State: `[θ₁, θ₂, θ̇₁, θ̇₂]` — two angles and two angular velocities.
-
-The system is chaotic: nearby trajectories diverge exponentially (positive Lyapunov exponent). This makes long-horizon prediction fundamentally hard for any model.
-
-Integration uses a **symplectic implicit midpoint method**, which conserves the total energy H far better than Runge-Kutta over long simulations.
-
 ### Why the LSTM Diverges
 
-The LSTM has no physics constraints. During autoregressive rollout, small per-step errors compound exponentially. The model also doesn't conserve energy — it can drift to higher or lower energy states, causing the trajectory to blow up or decay unrealistically. This divergence is expected and is one of the key motivations for HNNs.
+The LSTM has no physics constraints. Autoregressive rollout compounds small per-step errors exponentially — a fundamental problem for chaotic systems. It also doesn't conserve energy.
 
-### Hamiltonian Neural Network
+### Why HNN Is Better Long-Term
 
-The HNN learns a scalar **H(q, p)** — the total energy of the system. Time derivatives are derived analytically via `torch.autograd.grad`:
+The HNN learns a scalar `H(q, p)`. All dynamics are derived from gradients of this scalar, so the system is **Hamiltonian by construction** — it cannot gain or lose energy arbitrarily. This gives physically plausible long-term behaviour even when the exact chaotic trajectory cannot be matched.
+
+### Energy Formula
 
 ```
-dθ/dt  =  ∂H/∂θ̇    (from H w.r.t. momentum)
-dθ̇/dt = -∂H/∂θ     (from H w.r.t. position)
+E = ω₁² + 0.5·ω₂² + ω₁·ω₂·cos(θ₁−θ₂) − 2g·cos(θ₁) − g·cos(θ₂)
 ```
 
-Because the dynamics always come from gradients of a scalar, the system is Hamiltonian by construction — it cannot create or destroy energy. This gives physically plausible long-term trajectories even when the exact chaotic path cannot be matched.
-
-### LSTM as State Encoder
-
-The HNN cannot directly observe a single noisy state — it is difficult to know the exact current state from one frame. Instead, the frozen LSTM encodes the last 20 frames into an estimate of the current state, which the HNN then uses. This separates concerns: the LSTM handles temporal context, the HNN handles physics.
+(simplified with equal masses and arm lengths, g=9.81)
 
 ---
 
 ## Data Schema
 
-All parquet files share this schema:
+All parquet files:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `sim_id` | string | Unique simulation ID |
+| `sim_id` | int/string | Simulation identifier |
 | `t` | float64 | Time (seconds) |
 | `theta1` | float64 | Angle of pendulum 1 (radians, unwrapped) |
 | `theta2` | float64 | Angle of pendulum 2 (radians, unwrapped) |
-| `theta1_dot` | float64 | Angular velocity of pendulum 1 (rad/s) |
-| `theta2_dot` | float64 | Angular velocity of pendulum 2 (rad/s) |
-| `l1`, `l2` | float64 | Arm lengths (m) |
-| `m1`, `m2` | float64 | Masses (kg) |
-| `dt` | float64 | Timestep used in simulation |
+| `theta1_dot` | float64 | Angular velocity 1 (rad/s) |
+| `theta2_dot` | float64 | Angular velocity 2 (rad/s) |
 
-Angles are stored **unwrapped** (can exceed ±2π for long simulations). Visualisation wraps them to [-π, π] at render time.
-
----
-
-## Results
-
-| Model | Single-step val loss | Long-term behaviour | Energy conserved |
-|-------|---------------------|---------------------|-----------------|
-| LSTM | ~0.005 | Diverges within seconds | No |
-| HNN | ~0.135 (normalised) | Physically plausible | Yes (by construction) |
-
-The LSTM is excellent at predicting one step ahead but fails at rollout due to the chaotic nature of the double pendulum. The HNN produces trajectories that remain physically realistic indefinitely, even though the exact chaotic path cannot be matched.
+Angles are stored **unwrapped** (can exceed ±2π). Frontend and visualize.py wrap to [−π, π] at render time.

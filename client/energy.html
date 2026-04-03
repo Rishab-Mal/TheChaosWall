@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Energy Drift — TheChaosWall</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #fafafa;
+        --bg-card: #f4f4f5;
+        --bg-card2: #e4e4e7;
+        --text: #09090b;
+        --text-dim: #71717a;
+        --purple: #7c3aed;
+        --cyan: #0891b2;
+        --orange: #ea580c;
+        --green: #16a34a;
+        --border: rgba(0,0,0,0.09);
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        background: var(--bg); color: var(--text);
+        font-family: 'Space Grotesk', sans-serif;
+        line-height: 1.6; min-height: 100vh;
+      }
+
+      /* ── NAV ── */
+      nav {
+        position: sticky; top: 0; z-index: 100;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 1rem 2.5rem;
+        background: rgba(250,250,250,0.88); backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-logo { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em; }
+      .nav-logo span { color: var(--purple); }
+      .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+      .nav-pill {
+        font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em;
+        padding: 0.25rem 0.75rem;
+        background: rgba(22,163,74,0.1); color: var(--green);
+        border: 1px solid rgba(22,163,74,0.25); border-radius: 9999px;
+      }
+      .nav-back {
+        display: flex; align-items: center; gap: 0.4rem;
+        color: var(--text-dim); text-decoration: none;
+        font-size: 0.88rem; font-weight: 500; transition: color 0.2s;
+      }
+      .nav-back:hover { color: var(--text); }
+
+      /* ── LAYOUT ── */
+      main { max-width: 1240px; margin: 0 auto; padding: 3rem 2rem 5rem; }
+
+      .page-label {
+        font-size: 0.75rem; font-weight: 600; letter-spacing: 0.12em;
+        text-transform: uppercase; color: var(--green); margin-bottom: 0.6rem;
+      }
+      .page-title {
+        font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700;
+        letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.8rem;
+      }
+      .page-title .accent {
+        background: linear-gradient(135deg, var(--green), var(--cyan));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .page-sub {
+        color: var(--text-dim); font-size: 1rem; max-width: 700px;
+        margin-bottom: 2.5rem; line-height: 1.75;
+      }
+
+      /* ── CONTROLS ── */
+      .form-card {
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.75rem; margin-bottom: 2rem;
+      }
+      .form-grid {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2rem; margin-bottom: 1.5rem;
+      }
+      @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; gap: 1.25rem; } }
+      .field label {
+        display: flex; justify-content: space-between; align-items: baseline;
+        font-size: 0.88rem; font-weight: 600; margin-bottom: 0.6rem;
+      }
+      .field label .val {
+        font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;
+        color: var(--green); font-weight: 500;
+      }
+      input[type="range"] { width: 100%; accent-color: var(--green); cursor: pointer; }
+      .field-hint { font-size: 0.74rem; color: var(--text-dim); margin-top: 0.35rem; font-family: 'JetBrains Mono', monospace; }
+      select {
+        width: 100%; padding: 0.5rem 0.75rem;
+        background: var(--bg); border: 1px solid var(--border);
+        border-radius: 8px; color: var(--text);
+        font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+        cursor: pointer; appearance: none; margin-top: 0.1rem;
+      }
+      select:focus { outline: 2px solid var(--green); outline-offset: 2px; }
+
+      .form-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+      .btn {
+        padding: 0.65rem 1.6rem; border: none; border-radius: 9999px;
+        font-family: 'Space Grotesk', sans-serif; font-size: 0.92rem; font-weight: 600;
+        cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+      }
+      .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+      .btn:active { transform: translateY(0); }
+      .btn:disabled { opacity: 0.38; cursor: not-allowed; transform: none; }
+      .btn-run { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff; }
+      .btn-reset { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+      .btn-reset:hover { color: var(--text); border-color: rgba(0,0,0,0.2); }
+
+      /* Status */
+      .ws-status {
+        display: flex; align-items: center; gap: 0.5rem;
+        font-size: 0.82rem; font-family: 'JetBrains Mono', monospace; color: var(--text-dim);
+      }
+      .sdot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: background 0.3s;
+      }
+      .sdot.online  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+      .sdot.offline { background: var(--text-dim); }
+      .sdot.loading { background: var(--orange); animation: blink 0.8s ease-in-out infinite; }
+      @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
+
+      /* ── CHART ── */
+      .chart-wrap {
+        border: 1px solid var(--border); border-radius: var(--radius);
+        background: var(--bg-card); overflow: hidden; margin-bottom: 1.5rem;
+      }
+      #energy-chart { width: 100%; height: 420px; display: block; }
+
+      /* ── STAT CARDS ── */
+      .cards-grid {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem;
+      }
+      @media (max-width: 700px) { .cards-grid { grid-template-columns: 1fr; } }
+      .stat-card {
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.4rem;
+        border-top: 3px solid;
+      }
+      .stat-card.actual { border-top-color: var(--green); }
+      .stat-card.hnn    { border-top-color: var(--cyan); }
+      .stat-card.lstm   { border-top-color: var(--purple); }
+
+      .card-header {
+        display: flex; align-items: center; gap: 0.5rem;
+        font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em;
+        text-transform: uppercase; margin-bottom: 0.85rem;
+      }
+      .card-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+      .card-body { font-size: 0.88rem; }
+      .card-body .card-val {
+        font-family: 'JetBrains Mono', monospace; font-size: 1.3rem;
+        font-weight: 600; color: var(--text); margin-bottom: 0.25rem;
+      }
+      .card-body .card-sub  { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.4rem; }
+      .card-body .card-drift {
+        font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--text-dim);
+      }
+      .card-body .card-dur  { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.3rem; }
+      .card-body .card-warn {
+        font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #dc2626;
+      }
+
+      /* ── EXPLAINER ── */
+      .explainer {
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-left: 3px solid var(--green); border-radius: var(--radius);
+        padding: 1.5rem 1.75rem;
+      }
+      .explainer h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.6rem; }
+      .explainer p  { font-size: 0.9rem; color: var(--text-dim); line-height: 1.75; }
+      .explainer p + p { margin-top: 0.75rem; }
+      code {
+        font-family: 'JetBrains Mono', monospace; font-size: 0.83rem;
+        background: var(--bg-card2); padding: 0.1rem 0.45rem;
+        border-radius: 5px; color: var(--text);
+      }
+      strong { color: var(--text); }
+    </style>
+  </head>
+
+  <body>
+    <nav>
+      <div class="nav-logo">The<span>Chaos</span>Wall</div>
+      <div class="nav-right">
+        <span class="nav-pill">Physics insight</span>
+        <a class="nav-back" href="/">← Back to home</a>
+      </div>
+    </nav>
+
+    <main>
+      <p class="page-label">Analysis</p>
+      <h1 class="page-title"><span class="accent">Energy</span> Drift</h1>
+      <p class="page-sub">
+        The clearest argument for physics-informed ML in one chart.
+        Run all three models for tens of seconds — the ground truth and HNN conserve
+        total mechanical energy by design, while the LSTM's energy drifts unchecked
+        and eventually diverges off the chart entirely.
+      </p>
+
+      <!-- Controls -->
+      <div class="form-card">
+        <div class="form-grid">
+          <div class="field">
+            <label>θ₁ — first angle <span class="val" id="val-t1">120°</span></label>
+            <input type="range" id="slider-t1" min="-180" max="180" step="1" value="120" />
+            <div class="field-hint">−180° to 180°</div>
+          </div>
+          <div class="field">
+            <label>θ₂ — second angle <span class="val" id="val-t2">90°</span></label>
+            <input type="range" id="slider-t2" min="-180" max="180" step="1" value="90" />
+            <div class="field-hint">−180° to 180°</div>
+          </div>
+          <div class="field">
+            <label>Duration</label>
+            <select id="steps-select">
+              <option value="200">10 s  (200 steps)</option>
+              <option value="600">30 s  (600 steps)</option>
+              <option value="1200" selected>60 s  (1 200 steps)</option>
+              <option value="2400">120 s  (2 400 steps)</option>
+            </select>
+            <div class="field-hint">longer = more dramatic LSTM drift</div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-run" id="btn-run">Run</button>
+          <button class="btn btn-reset" id="btn-reset" disabled>Reset</button>
+          <div class="ws-status">
+            <span class="sdot offline" id="ws-dot"></span>
+            <span id="ws-status-text">Ready — backend must be running</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Energy chart -->
+      <div class="chart-wrap">
+        <canvas id="energy-chart"></canvas>
+      </div>
+
+      <!-- Stat cards -->
+      <div class="cards-grid">
+        <div class="stat-card actual">
+          <div class="card-header">
+            <div class="card-dot" style="background:var(--green)"></div>
+            Ground Truth
+          </div>
+          <div class="card-body" id="card-actual">
+            <div class="card-val">—</div>
+            <div class="card-sub">Initial energy E₀</div>
+            <div class="card-drift">awaiting run</div>
+          </div>
+        </div>
+        <div class="stat-card hnn">
+          <div class="card-header">
+            <div class="card-dot" style="background:var(--cyan)"></div>
+            HNN
+          </div>
+          <div class="card-body" id="card-hnn">
+            <div class="card-val">—</div>
+            <div class="card-sub">Final energy</div>
+            <div class="card-drift">awaiting run</div>
+          </div>
+        </div>
+        <div class="stat-card lstm">
+          <div class="card-header">
+            <div class="card-dot" style="background:var(--purple)"></div>
+            LSTM
+          </div>
+          <div class="card-body" id="card-lstm">
+            <div class="card-val">—</div>
+            <div class="card-sub">Final energy</div>
+            <div class="card-drift">awaiting run</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Explainer -->
+      <div class="explainer">
+        <h3>Why this matters</h3>
+        <p>
+          A double pendulum is a conservative system — its total mechanical energy
+          <code>E = T + V</code> cannot change. Any model that violates this will
+          eventually produce unphysical trajectories. The ground truth integrator uses a
+          symplectic method that preserves <em>E</em> exactly.
+          The HNN learns the scalar Hamiltonian <code>H(q, p)</code> and derives dynamics
+          via <code>dq/dt = ∂H/∂p, dp/dt = −∂H/∂q</code> — this structure guarantees
+          that <em>H</em> (and thus <em>E</em>) is conserved by construction.
+        </p>
+        <p>
+          The LSTM has no such constraint. It minimises prediction error step-by-step with
+          no knowledge of conservation laws. Each step introduces a tiny energy error;
+          over hundreds of steps these compound, and the trajectory drifts to arbitrarily
+          high or low energy states — physically impossible, and increasingly wrong.
+          <strong>Smaller ε in the Butterfly page,
+          longer duration here — together they show exactly why naïve sequence models
+          fail at physical simulation.</strong>
+        </p>
+      </div>
+    </main>
+
+    <script type="module" src="/src/energy.ts"></script>
+  </body>
+</html>
